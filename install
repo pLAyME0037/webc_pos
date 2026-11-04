@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+set -e
+
+if [ -e /etc/os-release ]; then
+    echo "ok"
+else
+    echo "[ERROR] Only work in linux or wsl"
+    exit 1
+fi
+
+if [ -e /usr/bin/git ]; then
+    cd ~
+    mkdir -p github
+    cd github/
+    # rm -rf ~/github/webc_pos
+    git clone --depth 1 https://github.com/pLAyME0037/webc_pos.git
+else
+    echo "[ERROR] fail to install or disconnected"
+fi
+
+DIR=~/github/webc_pos
+if [ -d "$DIR" ];then
+    echo ""
+    echo "============ done install webc_pos ============="
+    echo "[Run] cd webc_pos"
+    echo "[Run] ./build/bin/[serve, dev] 127.0.0.1 8081"
+    echo "[Info] serve for serving the website"
+    echo "[Info] dev for serving the website with hot reload"
+    echo "===================== End ======================"
+else
+    echo "dir $DIR not found"
+fi
