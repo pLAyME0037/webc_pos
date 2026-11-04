@@ -1,0 +1,11 @@
+-- ===========================================================================
+-- 0009_geo_admin -- SEED ONLY for MySQL, and MySQL ships no seed (precedent
+-- 0004_seed_pos: the geo pages are exercised by the sqlite suites). The four
+-- admin-area tables themselves are created in 0003_pos_eshop section 2,
+-- alongside the users/staff columns that reference them - SQLite and MySQL
+-- both reject a table that REFERENCES one not yet built, so the DDL cannot
+-- live here (0009 runs after 0003).
+--
+-- Nothing to do for this dialect. Kept as a registered migration so the
+-- history lines up across backends.
+-- ===========================================================================

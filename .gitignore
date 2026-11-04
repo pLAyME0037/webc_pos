@@ -1,0 +1,4 @@
+build/*
+resource/*
+tags
+compile_commands.json

@@ -1,0 +1,284 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define NOB_STRIP_PREFIX
+#include "third_party/nob/nob.h"
+
+#include "user.h"
+#include "src/layout/master_child.h"
+#include "src/layout/paging.h"
+#include "src/layout/header.h"
+#include "src/layout/footer.h"
+#include "src/core/webc_template.h"
+#include "src/http/utils.h"
+#include "src/db/db.h"
+
+// ---- /people master column shape (composed in people.c) ----------------
+MD_Column md_users_columns[] = {
+    { .name = "name",        .label = "Name",     .type = COL_TYPE_TEXT, .nullable = false },
+    { .name = "username",    .label = "Username", .type = COL_TYPE_TEXT, .nullable = false },
+    { .name = "email",       .label = "Email",    .type = COL_TYPE_TEXT, .nullable = false },
+    { .name = "phone",       .label = "Phone",    .type = COL_TYPE_TEXT, .nullable = false },
+    { .name = "profile_pic", .label = "Picture",  .type = COL_TYPE_BLOB, .nullable = true },
+};
+const size_t md_users_columns_count = ARRAY_LEN(md_users_columns);
+
+void render_users_page(Serve_Context *sc,
+                       Users          users,
+                       Page_Info      page_info,
+                       bool           fragment)
+{
+    // PAGE_BEGIN's declarations, minus the header: ?fragment=all responses
+    // are the bare pagination store (rows + per-page <template> pagers).
+    String_Builder *sb         = &(sc)->body;
+    const char *page_title     = "Users";
+    const char *current_path   = "/users";
+    String_View page_query     = sc->query_string;
+    const char *page_base      = current_path;
+    const char *page_key       = "page";
+    const char *page_container = "users-tbody";
+    if (!fragment) render_page_header(sb, page_title, current_path);
+#include "build/h_to_html/user.h"
+    if (!fragment) render_page_footer(sb);
+}
+
+void render_users_edit_page(Serve_Context *sc, User user) {
+    PAGE_BEGIN(sc, "Edit User",  "/users");
+#include "build/h_to_html/user_edit.h"
+    PAGE_END(sc);
+}
+
+// =========================================================================
+// Data layer
+// =========================================================================
+
+bool read_users(db_t *db, Users *rows, const Page_Info *slice) {
+    bool result = true;
+    sql_stmt stmt = {0};
+    // Table name case differs: MySQL on Linux stores `users` (from the
+    // migration file) and is case-sensitive there.
+    // ORDER BY id ASC is the single line that decides list order.
+    static const char *const q_all[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM Users "
+                         "ORDER BY id ASC;",
+        [SQL_MYSQL]    = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM users "
+                         "ORDER BY id ASC;",
+        [SQL_POSTGRES] = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM users "
+                         "ORDER BY id ASC;",
+    };
+    // Same query with the page window appended (limit/offset bound below).
+    static const char *const q_page[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM Users "
+                         "ORDER BY id ASC LIMIT ? OFFSET ?;",
+        [SQL_MYSQL]    = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM users "
+                         "ORDER BY id ASC LIMIT ? OFFSET ?;",
+        [SQL_POSTGRES] = "SELECT id, name, username, email, phone, profile_pic "
+                         "FROM users "
+                         "ORDER BY id ASC LIMIT $1 OFFSET $2;",
+    };
+
+    if (!sql_prepare(db, slice ? q_page[db->lang] : q_all[db->lang], &stmt)) {
+        return_defer(false);
+    }
+    if (slice) {
+        if (!sql_bind(&stmt, 1, SQL_I(slice->per_page))) return_defer(false);
+        if (!sql_bind(&stmt, 2, SQL_I(slice->offset)))    return_defer(false);
+    }
+
+    Sql_Step ret = SQL_DONE;
+    for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
+        int column = 0;
+        const char *id          = sql_column_text(&stmt, column++);
+        const char *name        = sql_column_text(&stmt, column++);
+        const char *username    = sql_column_text(&stmt, column++);
+        const char *email       = sql_column_text(&stmt, column++);
+        const char *phone       = sql_column_text(&stmt, column++);
+        const char *profile_pic = sql_column_text(&stmt, column++);
+        Users_add(rows, ((User) {
+            .id          = id          ? temp_strdup(id)          : NULL,
+            .name        = name        ? temp_strdup(name)        : NULL,
+            .username    = username    ? temp_strdup(username)    : NULL,
+            .email       = email       ? temp_strdup(email)       : NULL,
+            .phone       = phone       ? temp_strdup(phone)       : NULL,
+            .profile_pic = profile_pic ? temp_strdup(profile_pic) : NULL,
+        }));
+    }
+
+    if (ret != SQL_DONE) {
+        nob_log(NOB_ERROR, "read_users: %s", db_errmsg(db));
+        return_defer(false);
+    }
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool count_users(db_t *db, size_t *out) {
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT count(*) FROM Users;",
+        [SQL_MYSQL]    = "SELECT count(*) FROM users;",
+        [SQL_POSTGRES] = "SELECT count(*) FROM users;",
+    };
+    if (!sql_prepare(db, q[db->lang], &stmt)) return false;
+    bool ok = false;
+    if (sql_step(&stmt) == SQL_ROW) {
+        *out = (size_t)sql_column_int64(&stmt, 0);
+        ok = true;
+    } else {
+        nob_log(NOB_ERROR, "count_users: %s", db_errmsg(db));
+    }
+    sql_finalize(&stmt);
+    return ok;
+}
+
+bool create_user(db_t *db, String_View *fields, size_t count) {
+    bool result = true;
+
+    // 0007: phone is the required handle (NOT NULL UNIQUE) - the demo
+    // forms all carry a required phone input, values[0..3] = the four
+    // keys, profile_pic rides the optional slot.
+    if (count < 5) return false;
+    String_View name        = fields[0];
+    String_View username    = fields[1];
+    String_View email       = fields[2];
+    String_View phone       = fields[3];
+    String_View profile_pic = fields[4];
+    sql_stmt stmt = {0};
+    // Conflict handling is the dialect-specific part (uuid PKs never collide
+    // in practice, so MySQL/Postgres just insert).
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "INSERT OR REPLACE INTO Users "
+                         "(name, username, email, phone, profile_pic) "
+                         "VALUES (?, ?, ?, ?, ?);",
+        [SQL_MYSQL]    = "INSERT INTO users "
+                         "(name, username, email, phone, profile_pic) "
+                         "VALUES (?, ?, ?, ?, ?);",
+        [SQL_POSTGRES] = "INSERT INTO users "
+                         "(name, username, email, phone, profile_pic) "
+                         "VALUES ($1, $2, $3, $4, $5);",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt))     return_defer(false);
+    if (!sql_bind(&stmt, 1, SQL_SV(name)))        return_defer(false);
+    if (!sql_bind(&stmt, 2, SQL_SV(username)))    return_defer(false);
+    if (!sql_bind(&stmt, 3, SQL_SV(email)))       return_defer(false);
+    if (!sql_bind(&stmt, 4, SQL_SV(phone)))       return_defer(false);
+    if (!sql_bind(&stmt, 5, SQL_SV(profile_pic))) return_defer(false);
+    if (!sql_final_step(&stmt))                   return_defer(false);
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool update_user(db_t *db, String_View *fields, size_t count, String_View id) {
+    bool result = true;
+    if (count < 5) return false;
+    String_View name        = fields[0];
+    String_View username    = fields[1];
+    String_View email       = fields[2];
+    String_View phone       = fields[3];
+    String_View profile_pic = fields[4];
+    sql_stmt stmt = {0};
+    // profile_pic is kept as-is when the form did not carry a new file
+    // (value NULL or empty), so editing name/email never wipes the picture.
+    // An empty phone keeps the stored one too (0007: it is required - a
+    // blank can only arrive from a hand-rolled POST, never the browser).
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "UPDATE Users SET name = ?, username = ?, email = ?, "
+                         "phone = COALESCE(NULLIF(?, ''), phone), "
+                         "profile_pic = COALESCE(NULLIF(?, ''), profile_pic) "
+                         "WHERE id = ?;",
+        [SQL_MYSQL]    = "UPDATE users SET name = ?, username = ?, email = ?, "
+                         "phone = COALESCE(NULLIF(?, ''), phone), "
+                         "profile_pic = COALESCE(NULLIF(?, ''), profile_pic) "
+                         "WHERE id = ?;",
+        [SQL_POSTGRES] = "UPDATE users SET name = $1, username = $2, email = $3, "
+                         "phone = COALESCE(NULLIF($4, ''), phone), "
+                         "profile_pic = COALESCE(NULLIF($5, ''), profile_pic) "
+                         "WHERE id = $6;",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt))     return_defer(false);
+    if (!sql_bind(&stmt, 1, SQL_SV(name)))        return_defer(false);
+    if (!sql_bind(&stmt, 2, SQL_SV(username)))    return_defer(false);
+    if (!sql_bind(&stmt, 3, SQL_SV(email)))       return_defer(false);
+    if (!sql_bind(&stmt, 4, SQL_SV(phone)))       return_defer(false);
+    if (!sql_bind(&stmt, 5, SQL_SV(profile_pic))) return_defer(false);
+    if (!sql_bind(&stmt, 6, SQL_SV(id)))          return_defer(false);
+    if (!sql_final_step(&stmt))                   return_defer(false);
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool soft_delete_user(db_t *db, String_View id) {
+    bool result = true;
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "UPDATE users "
+                         "SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
+                         "WHERE id = ?;",
+        [SQL_MYSQL]    = "UPDATE users SET deleted_at = UTC_TIMESTAMP() "
+                         "WHERE id = ?;",
+        [SQL_POSTGRES] = "UPDATE users SET deleted_at = now() WHERE id = $1;",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
+    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
+    if (!sql_final_step(&stmt))               return_defer(false);
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+static bool restore_user(db_t *db, String_View id) {
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "UPDATE users SET deleted_at = NULL WHERE id = ?;",
+        [SQL_MYSQL]    = "UPDATE users SET deleted_at = NULL WHERE id = ?;",
+        [SQL_POSTGRES] = "UPDATE users SET deleted_at = NULL WHERE id = $1;",
+    };
+    sql_stmt stmt = {0};
+    bool result = true;
+    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
+    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
+    if (!sql_final_step(&stmt))               return_defer(false);
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool delete_user(db_t *db, String_View id) {
+    bool result = true;
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "DELETE FROM Users WHERE id = ?;",
+        [SQL_MYSQL]    = "DELETE FROM users WHERE id = ?;",
+        [SQL_POSTGRES] = "DELETE FROM users WHERE id = $1;",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
+    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
+    if (!sql_final_step(&stmt))               return_defer(false);
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+// profile_pic is optional: the /people master form has no file input, so a
+// missing key binds NULL (fresh pic); the real upload forms still carry it.
+// phone is required (0007) - every users form carries the input.
+static const char *fields[] = { "name", "username", "email", "phone" };
+static const char *opt_fields[] = { "profile_pic" };
+SERVE_CRUD(users, user, Users, User, fields, opt_fields)
