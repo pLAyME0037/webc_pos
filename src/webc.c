@@ -353,20 +353,40 @@ int main(int argc, char **argv) {
                 "need it to find the location of ~/sqlite3/webc_c/ directory.\n");
         return 1;
     }
-    // WEBC_DB overrides the database location (tests, alternate instances).
-    // Its parent directory becomes the "webc dir" the legacy-file migration
-    // logic operates on.
+    // Spec 7.1 env resolution, in precedence order:
+    //   WEBC_DEFAULT_SQL  - pin the dialect (SQLITE3/MYSQL/POSTGRES),
+    //                       overriding prefix detection;
+    //   WEBC_DB           - full DSN/path (tests, alternate instances);
+    //   WEBC_CONNECTION_STRING - raw DSN, used when WEBC_DB is unset;
+    //   default           - $HOME/sqlite3/webc_c/db.
+    WEBC_DEFAULT_SQL = getenv("WEBC_DEFAULT_SQL");
     const char *webc_db = getenv("WEBC_DB");
+    const char *webc_conn = getenv("WEBC_CONNECTION_STRING");
     if (webc_db && webc_db[0]) {
         WEBC_DB_PATH = strdup(webc_db);
-        const char *slash = strrchr(webc_db, '/');
-        WEBC_DIR_PATH = strdup(slash && slash != webc_db
-                               ? temp_sprintf("%.*s", (int) (slash - webc_db), webc_db)
-                               : ".");
+    } else if (webc_conn && webc_conn[0]) {
+        WEBC_DB_PATH = strdup(webc_conn);
     } else {
         WEBC_DIR_PATH = strdup(temp_sprintf("%s/sqlite3/webc_c", HOME_PATH));
         WEBC_DB_PATH = strdup(temp_sprintf("%s/db", WEBC_DIR_PATH));
     }
+    // WEBC_DIR_PATH is the parent directory of a sqlite file DSN (the legacy
+    // file->directory migration dance); non-sqlite DSNs are not file paths, so
+    // there is no directory to derive - "." keeps the global non-NULL.
+    if (!WEBC_DIR_PATH) {
+        if (strncmp(WEBC_DB_PATH, "mysql:", 6) == 0 ||
+            strncmp(WEBC_DB_PATH, "postgres:", 9) == 0) {
+            WEBC_DIR_PATH = strdup(".");
+        } else {
+            const char *slash = strrchr(WEBC_DB_PATH, '/');
+            WEBC_DIR_PATH = strdup(slash && slash != WEBC_DB_PATH
+                                   ? temp_sprintf("%.*s", (int) (slash - WEBC_DB_PATH),
+                                                  WEBC_DB_PATH)
+                                   : ".");
+        }
+    }
+    setenv("WEBC_DB_PATH", WEBC_DB_PATH, 1);
+    setenv("WEBC_DIR_PATH", WEBC_DIR_PATH, 1);
     WEBC_TRACE_MIGRATION_QUERIES = getenv("WEBC_TRACE_MIGRATION_QUERIES") != NULL;
 
     const char *program_name = shift(argv, argc);

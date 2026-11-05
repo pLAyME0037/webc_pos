@@ -2,30 +2,52 @@
 
 How three SQL dialects share one schema, one pool and one migration history.
 
-## Choosing a dialect
+## Choosing a dialect and a database
 
-The dialect is read from `WEBC_DB`, not from a config file. `webc_db_lang()`
-(`src/db/db.c:444`) is three lines:
+Environment resolution happens once in `main()` (`src/webc.c`) before
+anything touches the database. Four variables, no config file:
 
-```c
-if (strncmp(WEBC_DB_PATH, "mysql:", 6) == 0)     return SQL_MYSQL;
-if (strncmp(WEBC_DB_PATH, "postgres:", 9) == 0)  return SQL_POSTGRES;
-return SQL_SQLITE;                               // anything else is a file path
-```
+| Variable | Role | Precedence |
+|---|---|---|
+| `WEBC_DEFAULT_SQL` | pin the dialect: `SQLITE3` / `MYSQL` / `POSTGRES` (case-insensitive). Overrides prefix detection | wins over the prefix, dialect only |
+| `WEBC_DB` | full DSN or file path (tests, alternate instances) | wins for the location |
+| `WEBC_CONNECTION_STRING` | raw DSN, read only when `WEBC_DB` is unset | fallback |
+| *(none)* | `~/sqlite3/webc_c/db` | default |
+
+`webc_db_lang()` (`src/db/db.c:599`) picks the dialect in three steps:
+
+1. `WEBC_DEFAULT_SQL` is set → that dialect (an unknown value logs an error
+   and falls through to step 2).
+2. `mysql:` / `postgres:` prefix on `WEBC_DB_PATH`.
+3. Anything else (including `WEBC_DB_PATH == NULL`) → SQLite.
 
 `webc_db_dsn()` then hands the driver the string with the prefix stripped, so
 the driver never sees the selector.
 
 | `WEBC_DB` | Dialect | Driver |
 |---|---|---|
-| unset → `~/.sqlite3/webc/db` | SQLite | bundled amalgamation (3.46.1) |
+| unset → `~/sqlite3/webc_c/db` | SQLite | bundled amalgamation (3.46.1) |
 | `/tmp/x.db` | SQLite | bundled amalgamation |
 | `mysql:user=root;password=;database=webc;socket=/run/mysqld/mysqld.sock` | MySQL/MariaDB | libmariadb |
 | `postgres:...` | PostgreSQL | **stub — fails with a clear message** |
+| `WEBC_DEFAULT_SQL=MYSQL` + any path | MySQL/MariaDB | pin wins over the path |
 
-`WEBC_DB`'s parent directory becomes `WEBC_DIR_PATH`, which is where the
-runtime creates what it needs (including the recursive `nested/deep/db` the
-test harness deliberately exercises).
+For a SQLite file DSN the parent directory becomes `WEBC_DIR_PATH`, which is
+where the runtime creates what it needs (including the recursive
+`nested/deep/db` the test harness deliberately exercises). A
+`mysql:`/`postgres:` DSN is not a file path, so `WEBC_DIR_PATH` becomes `.`
+and the legacy file→directory layout dance is skipped (it only runs for the
+SQLite dialect anyway).
+
+### More than one database per process
+
+`webc_open_db_spec(spec)` (`src/db/db.h`) opens an **additional** database —
+`"mysql:..."`, `"postgres:..."` or a SQLite path — independent of the primary
+global. An explicit prefix on `spec` wins even when `WEBC_DEFAULT_SQL` pins
+the primary; a prefix-less `spec` honours the pin. Not pooled: the caller owns
+the handle and must `db_close()` it. Schema verification is cached per
+`(dialect, DSN)` pair, so opening the same second database twice does not
+re-read the migration history.
 
 ### Why SQLite is the default
 
@@ -81,9 +103,9 @@ branches on dialect for reads. Dialect differences are confined to:
 ## The pool
 
 ```c
-#define DB_POOL_SIZE 8          // src/db/db.h:27
-db_t *db_pool_get(void);        // round-robins db_pool_index over the array
-void  db_pool_put(db_t *db);    // release, does not close
+#define DB_POOL_SIZE 8          // src/db/db.h
+db_t *open_webc_db(void);       // checkout from the pool (or a transient)
+void  db_close(db_t *db);       // pooled -> release, otherwise destroy
 void  db_pool_init(void);       // opens all 8 up front, prints the count
 ```
 
@@ -91,17 +113,26 @@ void  db_pool_init(void);       // opens all 8 up front, prints the count
 bad DSN fails at startup rather than on the first request. It is idempotent,
 and `db_pool_get()` will initialise it if called first.
 
-`db_pool_get()` picks the next index round-robin; it does not wait for a free
-slot. With `DB_POOL_SIZE` 8 and one coroutine per connection, 9 concurrent
-requests that all hold a connection at the same moment can hand out a `NULL`.
-Handlers must handle `db_pool_get() == NULL`.
+`db_pool_get()` is a real **checkout**: it scans for the next slot whose
+`in_use` flag is clear, marks it taken, and `db_close()` hands it back
+(`db_pool_release()` rolls back any open transaction and recycles a SQLite
+connection that leaked prepared statements). Handlers keep the unchanged
+`db = open_webc_db(); ...; db_close(db);` shape — the pool is invisible to
+them.
 
-> **Round-robin, not checkout-tracking.** Nothing marks a slot as in-use, so
-> two connections can be handed the same `db_t*`. That is safe today because a
-> coroutine does not yield while holding a connection in the current handlers —
-> but it is an invariant, not something the type system enforces. If a handler
-> ever awaits between `db_pool_get()` and `db_pool_put()`, this must become a
-> real checkout list. Logged in [dev-log.md](dev-log.md).
+Two safety valves:
+
+- **Pool exhausted** (all 8 checked out): `db_pool_get()` opens a transient
+  connection instead of returning `NULL`, so concurrency costs a connection,
+  not a 500.
+- **Init failure latches**: a bad DSN or a refused schema marks the pool dead
+  for the process. `db_pool_get()` then returns `NULL` immediately with one
+  log line — no per-request retry storm re-running the 2.4 MB history check.
+  Callers already treat `NULL` as "serve 500".
+
+Schema verification itself runs **once per process per `(dialect, DSN)`**
+(`verified_items` in `db.c`); every later open of the same database just gets
+a fresh connection.
 
 ## Migrations
 
@@ -139,27 +170,36 @@ CREATE TABLE IF NOT EXISTS Migrations (
 );
 ```
 
-(`TIMESTAMP` instead of `DATETIME` on Postgres — this is why the DDL is a
-per-dialect array rather than one string.)
+(`TIMESTAMP` instead of `DATETIME` on Postgres; `query LONGTEXT` on MySQL —
+this is why the DDL is a per-dialect array rather than one string. Databases
+created when MySQL still said `TEXT` (64 KiB cap) are widened in place with a
+best-effort `ALTER TABLE Migrations MODIFY query LONGTEXT NOT NULL;` on every
+open — a migration file larger than 64 KiB would otherwise fail to store.)
 
 `query` stores the **exact text of the migration that was applied**, not a
-version number. On every open the code compares each stored string against
-the current file, byte for byte.
+version number. On every open the code compares stored strings against the
+current files.
 
 Why not a version number: it cannot detect that an already-applied migration
 was edited. Storing the text turns "someone rewrote history" from silent data
 corruption into a detectable state.
+
+The compare is **order-independent**: the `Migrations` table has no key and no
+`ORDER BY` can be relied on (MySQL's hidden PK, Postgres row order), so every
+stored row must equal some `migrations[]` entry and vice versa — the counts
+bound it. A row that matches nothing is `SCHEMA_HISTORY_MISMATCH`.
 
 ### The open sequence
 
 `create_schema_status()`:
 
 ```
+schema verified already for (lang, DSN)?  -- yes: skip straight to a fresh conn
 migration_files_load(lang)     -- read the three files, cache per dialect
 sql_txn_begin()
-exec migrations_table_sql[]    -- ensure Migrations exists
+exec migrations_table_sql[]    -- ensure Migrations exists (+ LONGTEXT widen)
 SELECT query FROM Migrations
-compare stored vs current files, in order
+compare stored vs current files, order-independent
   more in DB than in code   → ERROR "Database scheme is too new..."
   a stored string differs   → SCHEMA_HISTORY_MISMATCH
   pending                   → apply them all now
@@ -170,8 +210,9 @@ sql_txn_commit()
 comments in `db.c`:
 
 1. Migration files must not contain `PRAGMA` statements — SQLite rejects
-   `journal_mode`/`synchronous` changes inside a transaction. PRAGMAs run in
-   `open_webc_db()` *before* the transaction starts.
+   `journal_mode`/`synchronous` changes inside a transaction. Connection
+   PRAGMAs (`cache_size`, `temp_store`, `mmap_size`, `foreign_keys`, ...)
+   run in `sqlite_drv_open()` — at open time, before any transaction.
 2. A failure commits nothing; there is no partially-migrated state.
 
 Set `WEBC_TRACE_MIGRATION_QUERIES=1` to print each migration's SQL as it
@@ -181,13 +222,14 @@ applies.
 
 ```c
 if (status == SCHEMA_HISTORY_MISMATCH && attempt == 0) {
-    db_backup_and_reset();          // db → db.bak (+ wal/shm), close first
+    db_backup_and_reset(dsn);       // dsn = this connection's own DSN,
+                                    // db → db.bak (+ wal/shm), close first
     // fresh db created and migrated from migrations[]
     db_restore_from_backup(...)     // copy shared tables/columns
 }
 ```
 
-The recipe, verbatim from the comment at `db.c:206`:
+The recipe, verbatim from the comment at `db.c:349`:
 
 1. `db` → `db.bak` (old file, untouched)
 2. fresh db is created and migrated from `migrations[]`
@@ -233,13 +275,21 @@ databases hold those exact strings in `Migrations.query`, so editing a
 that database — which is precisely why the golden test exists. See
 [testing.md](testing.md).
 
+The rule when a shipped migration *must* be edited: amend the golden to the
+new bytes **in the same commit** — the alternative (moving the change into a
+new numbered migration) is only correct when no deployed database carries the
+old bytes. `0003_pos_eshop` was amended this way on 2026-11-05: the
+`v_geo_hierarchy` view added by `ff4fc0ed` already sits in the live database's
+history, so a new `0012` migration would have forced a D5 rebuild of every
+existing database instead of a golden re-pin.
+
 ## Things that will bite you
 
 | | |
 |---|---|
-| Editing a shipped migration file | history mismatch on every existing SQLite DB |
+| Editing a shipped migration file (without re-pinning the golden) | history mismatch on every existing SQLite DB |
 | Adding a file without a `migrations[]` entry | silently never applied |
 | `PRAGMA` inside a migration file | fails — it runs inside a transaction |
-| `WEBC_DB` with only a `mysql:` prefix change | the parent dir becomes the webc dir; nothing else moves |
-| Pool exhaustion | `db_pool_get()` returns `NULL`, no blocking |
+| `WEBC_DB` with only a `mysql:` prefix change | no directory is derived (`WEBC_DIR_PATH` = `.`); only the DSN moves |
+| Pool failure | latched for the process — one log line, then `NULL` → 500, no retry storm |
 | Postgres | `db_open()` fails with "postgres driver is not implemented yet" |

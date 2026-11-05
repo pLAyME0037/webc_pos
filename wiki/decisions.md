@@ -122,7 +122,10 @@ and here.
 
 **Decision.** `Migrations(applied_at, query)` stores the full text of each
 applied migration. On every open, stored text is compared with the current
-files, byte for byte, and a difference is `SCHEMA_HISTORY_MISMATCH`.
+files, byte for byte, and a difference is `SCHEMA_HISTORY_MISMATCH`. The
+compare is **order-independent** — every stored row must equal some
+`migrations[]` entry and vice versa — because the table has no key to order
+by, and row order differs per dialect (MySQL hidden PK, Postgres arbitrary).
 
 **Why.** A version number cannot detect that an *already applied* migration was
 edited — which is the actual way people break their databases. Storing the text
@@ -139,8 +142,11 @@ path (`db.bak` → fresh migrate → copy shared tables) run automatically.
   the first version.
 
 **Cost.** Editing a shipped migration file breaks every existing database —
-which is exactly what `test/golden/` exists to prevent. See
-[testing.md](testing.md).
+which is exactly what `test/golden/` exists to prevent. When the edit is
+deliberate, the golden is re-pinned to the new bytes **in the same commit**
+(the `0003_pos_eshop` `v_geo_hierarchy` amend, 2026-11-05); a new numbered
+migration is the right tool only when no deployed database carries the old
+bytes. See [testing.md](testing.md).
 
 ---
 
@@ -234,8 +240,10 @@ ERROR: <path>: Database scheme is too new. Contains more migrations applied
 than expected. Update your application.
 ```
 
-→ `SCHEMA_ERROR`, the open fails, `db_pool_init()` stops. The server still
-listens; DB-backed routes return 500.
+→ `SCHEMA_ERROR`, the open fails, `db_pool_init()` **latches**: the pool is
+dead for the process, `db_pool_get()` returns `NULL` immediately (one log
+line, no per-request retry), and the server still listens; DB-backed routes
+return 500.
 
 **Why.** The application genuinely does not know the schema it would be
 running against — columns, tables and constraints exist that no query in this
@@ -258,9 +266,9 @@ corresponding expectation to restore against.
 
 **Cost.** A database migrated by a newer or different checkout of this project
 becomes unopenable by this one, and the failure surfaces as 500s on DB routes
-rather than a refusal to start. **This is the live state of this checkout** —
-9 migrations applied, 2 registered. Analysed in
-[dev-log.md](dev-log.md).
+rather than a refusal to start. The live `~/sqlite3/webc_c/db` is healthy —
+11 history rows matching the 11 registered migrations (verified 2026-11-04);
+the failure mode is analysed in [dev-log.md](dev-log.md).
 
 ---
 
@@ -290,13 +298,25 @@ forgetting the second means it silently never applies.
 
 ## D11 — SQLite is the default; the dialect is a prefix on `WEBC_DB`
 
-**Decision.** `webc_db_lang()` looks only at `mysql:` / `postgres:` prefixes on
-`WEBC_DB`; anything else is a SQLite file path. No config file exists.
+**Decision.** No config file. `main()` resolves four environment variables
+once, before anything touches the database:
+
+1. `WEBC_DEFAULT_SQL` (`SQLITE3` / `MYSQL` / `POSTGRES`, case-insensitive) —
+   an explicit dialect that **overrides prefix detection**;
+2. `WEBC_DB` — the full DSN or file path (wins for the location);
+3. `WEBC_CONNECTION_STRING` — a raw DSN, read only when `WEBC_DB` is unset;
+4. neither → `~/sqlite3/webc_c/db`.
+
+`webc_db_lang()` then answers: the pin if set, else a `mysql:`/`postgres:`
+prefix on `WEBC_DB_PATH`, else SQLite (anything else is a file path).
+`webc_open_db_spec()` applies the same rule per spec string, so an explicit
+prefix on a second database's spec wins even under a pin.
 
 **Why.** SQLite needs no server, credentials or daemon, so a clone builds and
 runs with nothing configured — the smallest possible onboarding. One variable
 selects both the dialect and the location, so there is exactly one thing to
-set.
+set; the pin exists for the opposite case (a dialect that must not be guessed
+from a path), and `WEBC_CONNECTION_STRING` for callers that think in DSNs.
 
 **Rejected.**
 
@@ -306,10 +326,14 @@ set.
   a file path is a combination that has no meaning.
 - *MySQL default.* Requires a running daemon — the project would not run on a
   fresh clone at all.
+- *`WEBC_CONNECTION_STRING` above `WEBC_DB`.* The test harness (and every
+  documented example) sets `WEBC_DB`; flipping the order would silently
+  redirect them.
 
 **Cost.** No way to discover a dialect from the path alone, and the parent
-directory of `WEBC_DB` silently becomes the "webc dir" that legacy-file logic
-operates on.
+directory of a SQLite `WEBC_DB` silently becomes the "webc dir" that
+legacy-file logic operates on — for a `mysql:`/`postgres:` DSN there is no
+directory to derive, so `WEBC_DIR_PATH` becomes `.`.
 
 ---
 

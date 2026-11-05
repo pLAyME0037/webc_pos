@@ -28,13 +28,26 @@ static bool sqlite_drv_open(db_t *db, const char *dsn) {
     }
     db->conn = conn;
 
-    // journal_mode/synchronous must run outside transactions; foreign_keys
-    // is per-connection, so all three belong to connection setup.
+    // Connection setup: everything SQLite refuses to run inside a transaction
+    // lives here, so it is applied on every open - including pooled and
+    // recycled connections (this is where open_webc_db()'s old, dead PRAGMA
+    // block belongs: it used to run before the connection existed).
+    //   journal_mode/synchronous: durability vs speed for a local file
+    //   foreign_keys: per-connection, ON for every request-serving handle
+    //   cache_size (-2000 = 2000 KB): memory cap for the page cache
+    //   temp_store=1 (FILE): temp tables/indices go to disk, not RAM
+    //   mmap_size=0: no memory-mapped I/O (avoids SIGBUS on sparse files)
     if (sqlite3_exec(conn, "PRAGMA journal_mode = WAL;", NULL, NULL, NULL)
             != SQLITE_OK
         || sqlite3_exec(conn, "PRAGMA synchronous = NORMAL;", NULL, NULL, NULL)
             != SQLITE_OK
         || sqlite3_exec(conn, "PRAGMA foreign_keys=ON;", NULL, NULL, NULL)
+            != SQLITE_OK
+        || sqlite3_exec(conn, "PRAGMA cache_size = -2000;", NULL, NULL, NULL)
+            != SQLITE_OK
+        || sqlite3_exec(conn, "PRAGMA temp_store = 1;", NULL, NULL, NULL)
+            != SQLITE_OK
+        || sqlite3_exec(conn, "PRAGMA mmap_size = 0;", NULL, NULL, NULL)
             != SQLITE_OK) {
         snprintf(db->err, sizeof(db->err), "%s", sqlite3_errmsg(conn));
         sqlite3_close(conn);

@@ -7,7 +7,7 @@ How the app runs against a database nobody cares about.
 > **No test can touch a real database.**
 
 `test/run.sh` exports a throwaway `HOME` before anything starts, so the
-default `~/.sqlite3/webc/db` is never opened. If a test ever reaches your real
+default `~/sqlite3/webc_c/db` is never opened. If a test ever reaches your real
 data, the harness is broken — treat that as a bug in the harness first.
 
 ## `test/run.sh`
@@ -114,6 +114,11 @@ database. The golden test turns "someone tidied up a migration" into a red
 test instead of a data-loss incident for users. See
 [database.md](database.md).
 
+When a shipped migration is edited *deliberately*, re-pin the golden to the
+new bytes *in the same commit* — that is what `0003_pos_eshop.sqlite3.sql`
+received on 2026-11-05 (the `v_geo_hierarchy` view; adding a new numbered
+migration instead would have forced a D5 rebuild of every deployed database).
+
 ## Layout
 
 ```
@@ -142,9 +147,9 @@ test/
 Honest gaps, kept in [dev-log.md](dev-log.md) as well:
 
 - **No Postgres suite** — the driver is a stub, so there is nothing to run.
-- **No concurrency test.** The pool's round-robin-without-checkout behaviour
-  (see [database.md](database.md)) is untested; no suite opens more than one
-  request at a time.
+- **No concurrency test.** The pool's checkout tracking, transient-fallback
+  and release rollback (see [database.md](database.md)) are untested; no suite
+  opens more than one request at a time.
 - **`src/crud/` is untested** because it is untested *and* unreferenced — no
   caller exists to drive it.
 - **No keep-alive or chunked-encoding test** — neither is implemented.

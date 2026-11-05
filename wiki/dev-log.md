@@ -843,3 +843,136 @@ All verified today; each is documented where it lives.
    `migrations[]`, rebuild, re-run the suite **and** the real-DB smoke test.
 4. Cheap follow-ups once the above is settled: gaps 4, 5 and 6 are each a
    one-line fix in `src/webc.c`.
+
+---
+
+## 2026-11-04 — Database state audit: 8 defects + golden 0003 — **in progress**
+
+Scope set by request: audit how database state (dialect, connection, migration
+history) is held, fix everything found, keep this log and the wiki in sync with
+the code before, during and after. Baseline first, source untouched.
+
+Trees compared: this checkout (`webc_pos`) and the original `webc_c` carry
+**byte-identical `src/` and `migrations/`** — nothing below is a regression
+from the repo isolation.
+
+### Verified — works today
+
+| | |
+|---|---|
+| Dialect pick | `WEBC_DB` prefix → `webc_db_lang()` (`src/db/db.c:514`); **all 152** `q[db->lang]` call sites index by their own connection's `db->lang`, zero wrong-index hits; `db->lang` assigned only in `db_open()` |
+| SQLite serve | fresh DB → 11/11 `Migrations` rows byte-match the files; `/`, `/notes`, `/users` → 200; default `~/sqlite3/webc_c/db` healthy (11 rows, all match, incl. `0009_geo_admin` 2.4 MB) |
+| MySQL/MariaDB | `mysql_test.py` 41 passed, 0 failed |
+| HTTPS | `https_test.py` 6 passed, 0 failed |
+| Connection lifecycle | 30 serial + 40 parallel `GET /notes`: fd count flat — handlers open/close symmetrically, no leak |
+| NULL handling | all 37 `open_webc_db()` call sites checked, NULL guarded |
+
+### Not working yet — this entry's scope
+
+| # | Defect | Where | Fix planned |
+|---|---|---|---|
+| 1 | Spec variables `WEBC_CONNECTION_STRING` / `WEBC_DEFAULT_SQL` do not exist anywhere (repo, tests, wiki, original `webc_c`) — dialect is selected only by `WEBC_DB` prefix | `src/webc.c:359`, `src/db/db.c:514` | accept both as env vars: explicit connection string + explicit dialect, `WEBC_DB` keeps precedence (tests depend on it), wiki documents all three |
+| 2 | One global (`WEBC_DB_PATH`) = **no second database in one process**; `open_webc_db(void)` takes no DSN; pool, backup path and migration-text cache are all keyed to the single global | `src/db/db.h:23`, `src/db/db.c:133,284,631` | `webc_open_db_spec(const char *spec)` for extra connections; migration text cache indexed **per dialect** so two dialects can be open at once; backup path taken from the connection's own DSN |
+| 3 | Dead PRAGMA block: `sql_exec_script(result, ...)` runs while `result == NULL` (before `db_open()`), `sql.h:177` guard makes it a silent no-op — `cache_size`/`temp_store`/`mmap_size` are never applied | `src/db/db.c:538-540` | move the three PRAGMAs into `sqlite_drv_open()` where the other connection PRAGMAs live; delete the dead block |
+| 4 | Pool is dead weight + retry storm: `db_pool_get()`/`db_pool_put()` have **zero call sites**; every request opens a fresh connection and re-runs the whole migration-history check (reads the 2.4 MB `0009` row per request); 8 idle pool connections (18 fds observed); when init fails `db_pool_initialized` stays false and `db_pool_get()` re-runs full init on every request | `src/db/db.c:635-674`, 37 call sites | `open_webc_db()` becomes a **pool checkout** with in-use tracking (release in `db_close()`), busy pool falls back to a transient connection instead of NULL; schema verified **once per process per (dialect, DSN)**; init failure latches (fail fast, one log line) instead of retrying per request |
+| 5 | History compare assumes row order: `SELECT query FROM Migrations;` has no `ORDER BY` and the table has no explicit key (MySQL hidden PK, Postgres arbitrary) → false `SCHEMA_HISTORY_MISMATCH`, which is **fatal** for non-sqlite (no auto-rebuild) | `src/db/db.c:209`, `db.c:604` | order-independent match: every stored row must equal some `migrations[]` entry and vice versa (count already bounds it); keeps D5's "text, not version" property |
+| 6 | `webc_db_lang()` dereferences `WEBC_DB_PATH` without a NULL guard → segfault if called before `main()` sets the globals | `src/db/db.c:515` | NULL → `SQL_SQLITE`, `webc_db_dsn()` → `""` (which `db_open()` already rejects) |
+| 7 | Garbage `WEBC_DIR_PATH`: `strrchr(webc_db, '/')` runs on the raw `mysql:...socket=/run/mysqld/...` string → directory `mysql:user=...;socket=/run/mysqld` | `src/webc.c:362-365` | strip the dialect prefix first (`webc_db_dsn()`), derive the dir from the path part only |
+| 8 | MySQL history column is `TEXT` (64 KiB cap): current largest mysql migration is 25 KB, any future `mysql.sql` > 64 KB fails (strict) or truncates (non-strict) → permanent history mismatch | `src/db/db.c:121-124` | `query LONGTEXT` in the bootstrap DDL + best-effort `ALTER TABLE ... MODIFY` for databases already created with `TEXT` |
+| 9 | Shipped migration edited without re-pinning golden: commit `ff4fc0ed` added `v_geo_hierarchy` (required by `src/pos/geo.c:519`) to `migrations/0003_pos_eshop/sqlite3.sql`; `test/golden/0003*` still holds the older 48,787 B bytes → `http_test` golden FAIL, and any DB migrated before that edit takes `SCHEMA_HISTORY_MISMATCH` → D5 rebuild | `test/golden/0003_pos_eshop.sqlite3.sql` vs `migrations/0003_pos_eshop/sqlite3.sql` (49,135 B) | **decision taken: amend the golden to the current bytes** (the live DB already matches them; moving the view to a new migration would force a full D5 rebuild of `~/sqlite3/webc_c/db`, which the running `webc_c` server on :8080 holds open). Rule restated in wiki: a shipped migration may only be edited deliberately, and the golden must be re-pinned in the same commit |
+
+### Verified — baseline test results (before this work)
+
+`./test/run.sh` (after bootstrapping `build/bin/nob` and adding the two
+gitignored `resource/image/*.png` placeholders — see gaps below): **exit 1 —
+22 failures across 8 suites**:
+
+| Suite | Result | Nature |
+|---|---|---|
+| `http_test.py` | 118 / 2 failed | `golden migration 0003_pos_eshop` (**#9, in scope**), `sidebar nav links got=32 want=31` (drift, out of scope) |
+| `pos_test.py` | 372 / 17 failed | `MD_Column` config gaps, **not** DB: `md_provinces_columns` (`src/pos/geo.c:9`) declares only `name_kh`/`name_en` while the tests expect the `prov_id` "code" column — one missing column explains th=3≠5, `create → 400` (`count < 3` in `create_province`), edit prefill `None`, filter/FK failures; same pattern for dictionaries/shifts/finance/permissions/config/alerts/audit |
+| `shop_test.py` | 118 / 0 | green |
+| `role_test.py` | 48 / 0 | green |
+| `crud_contract_test.py` | 157 / 3 failed | `provinces/districts/communes create form accepted (302) got 400` — same `MD_Column` gap as `pos_test` |
+| `geo_cascade_test.py` | 32 / 0 | green |
+| `mysql_test.py` | 41 / 0 | green |
+| `https_test.py` | 6 / 0 | green |
+
+Only #9 of those is database state; the `MD_Column` gaps are a separate
+feature gap (tests describe a `prov_id` column the config never got) and stay
+**out of scope** for this entry.
+
+### Known gaps (unchanged, noted while baselining)
+
+| | |
+|---|---|
+| Fresh clone cannot build | `nob.c:114` bundles `./resource/image/{user1,know_me}.png`, but `.gitignore` has `resource/*` → `build_bundle()` fails on a clean checkout. Worked around locally with 1×1 placeholders; real fix is to commit the assets or make bundling tolerate their absence |
+| `Migrations` history has no explicit ordering column | consequence carried by fix #5; adding one would need a cross-dialect `ALTER` on every existing database |
+| Pool round-robin invariant | becomes real checkout tracking with #4 (wiki `database.md` note must be rewritten with it) |
+
+### Next (all four steps done — see "Implemented — results" below)
+
+1. This entry (plan + baseline) — written before touching `src/`.
+2. Implement #1–#8, amend golden for #9.
+3. Rebuild, `./test/run.sh`, compare against the baseline above (golden must go green; nothing else may regress).
+4. Sync `wiki/database.md`, `wiki/architecture.md`, `wiki/decisions.md`, `wiki/testing.md`, `README.md` with the code as it then stands, and close this entry with the verified results.
+
+### Implemented — results (2026-11-05)
+
+All nine fixes landed. What works, verified:
+
+| # | Shipped | Evidence |
+|---|---|---|
+| 1 | `WEBC_DEFAULT_SQL` + `WEBC_CONNECTION_STRING` read in `main()`; precedence `WEBC_DB` > `WEBC_CONNECTION_STRING` > `~/sqlite3/webc_c/db`; `WEBC_DEFAULT_SQL` set first, wins over prefix (unknown value logs and falls through) | smoke: default layout, `WEBC_CONNECTION_STRING` → `nested/deep/db`, `WEBC_DB` beats `WEBC_CONNECTION_STRING` (via_conn never created); pin both directions: `MYSQL` + plain path → mysql driver attempted, `SQLITE3` + `mysql:` DSN → sqlite opened, HTTP 200 |
+| 2 | `webc_open_db_spec(spec)` opens a second DB independent of the global; migration-text cache indexed per `(dialect, DSN)` (`verified_items`), backup path taken from the connection's own DSN | harness link: sqlite spec opens + migrates from scratch while `WEBC_DEFAULT_SQL=SQLITE3` is pinned; `mysql:` spec still refused by the mysql driver (prefix on spec beats the pin) |
+| 3 | dead PRAGMA block deleted; `cache_size`/`temp_store`/`mmap_size` added in `sqlite_drv_open()` | builds clean; connection behaves as before (PRAGMAs run at open) |
+| 4 | pool is a real checkout (`Pool_Slot.in_use`, `db_close` → `db_pool_release`: txn rollback + leaked-statement recycle); busy pool → transient connection (`pool_slot = -1`, destroyed on close); init failure latches (`db_pool_started`/`db_pool_ready`), `db_pool_get()` = one refusal, no storm; schema verified once per process per `(dialect, DSN)` | `./test/run.sh` full run: no 500s, no per-request schema re-check in logs; startup prints `DB pool initialized with 8 connections` |
+| 5 | `create_schema_status()` order-independent: every stored row must equal some `migrations[]` entry and vice versa | full suite: fresh installs and the shared-server suites all apply/compare history cleanly |
+| 6 | `webc_db_lang()` NULL → `SQL_SQLITE`, `webc_db_dsn()` NULL → `""` | compiles clean; no call path derefs the globals before `main()` |
+| 7 | `WEBC_DIR_PATH` derived only for sqlite file DSNs; `mysql:`/`postgres:` → `.` (no more `mysql:user=...;socket=/run/mysqld` directory) | smoke: mysql-pinned run creates **no** garbage directory; layout dance skipped (it only ever ran for sqlite) |
+| 8 | MySQL bootstrap DDL `query LONGTEXT` + best-effort `ALTER ... MODIFY query LONGTEXT NOT NULL` on every open | `mysql_test.py` green (41/0); widen step is a no-op on databases already `LONGTEXT` |
+| 9 | golden `0003_pos_eshop.sqlite3.sql` re-pinned to current `migrations/0003_pos_eshop/sqlite3.sql` bytes (`cmp` identical) | `http_test` golden check **green** |
+
+#### Test results after the work
+
+`./test/run.sh` — exit 1, **21 failures** (baseline: 22). Only change: the
+golden failure is gone; nothing regressed.
+
+| Suite | Before | After |
+|---|---|---|
+| `http_test.py` | 118 / 2 | **119 / 1** (golden fixed; `sidebar nav links 32≠31` is pre-existing layout drift) |
+| `pos_test.py` | 372 / 17 | 372 / 17 (unchanged — `MD_Column` gaps, out of scope) |
+| `shop_test.py` | 118 / 0 | 118 / 0 |
+| `role_test.py` | 48 / 0 | 48 / 0 |
+| `crud_contract_test.py` | 157 / 3 | 157 / 3 (unchanged — same `MD_Column` gaps) |
+| `geo_cascade_test.py` | 32 / 0 | 32 / 0 |
+| `mysql_test.py` | 41 / 0 | 41 / 0 |
+| `https_test.py` | 6 / 0 | 6 / 0 |
+
+The remaining 21 are the `MD_Column` feature gap (17 + 3) and the sidebar
+link-count drift (1) — both documented above as out of scope.
+
+#### Wiki sync (this pass)
+
+`wiki/database.md` (env resolution + precedence table, `webc_open_db_spec`,
+checkout pool + latch + transient, order-independent compare, `LONGTEXT` +
+widen, PRAGMA location, golden amend rule, recipe line refs), 
+`wiki/architecture.md` (request diagram, startup env steps, correct default
+path), `wiki/decisions.md` (D5 order-independent + amend rule, D9 latch +
+stale "9 applied / 2 registered" claim replaced with the verified 11/11, D11
+rewritten for the four-variable resolution), `wiki/testing.md` (correct
+default path, golden amend rule, pool wording), `wiki/cli.md` (env table
+gains `WEBC_DEFAULT_SQL`/`WEBC_CONNECTION_STRING`, retry-storm gap marked
+fixed + latch, paths corrected), `wiki/WIKI.md` (env list, PRAGMA location,
+golden list = three migrations, real-DB path). `README.md` reviewed: it is
+the historical phase plan and carries no claim this work invalidated — no
+edit needed.
+
+#### Still open (unchanged from above)
+
+- `MD_Column` config gaps (`prov_id` code column etc.) — 20 of the 21
+  remaining failures; a feature gap, not database state.
+- sidebar nav link count 32 vs 31 — layout drift, not database state.
+- gitignored `resource/image/*.png` still blocks a fresh-clone build.
+- pool concurrency behaviour (checkout under load) has no test — noted in
+  `wiki/testing.md`.

@@ -144,11 +144,13 @@ Set before dispatch, so they affect every command including `help`:
 | Variable | Effect |
 |---|---|
 | `HOME` | **Required.** Missing → `ERROR: No $HOME environment variable is setup...`, exit 1 — before anything else runs. |
-| `WEBC_DB` | Overrides the DB path; its parent becomes the "webc dir". |
+| `WEBC_DEFAULT_SQL` | Pins the dialect: `SQLITE3` / `MYSQL` / `POSTGRES` (case-insensitive). Wins over the `mysql:`/`postgres:` prefix; an unknown value logs an error and falls back to the prefix. |
+| `WEBC_DB` | Full DSN or file path; wins for the location. For a SQLite path its parent becomes the "webc dir". |
+| `WEBC_CONNECTION_STRING` | Raw DSN, read only when `WEBC_DB` is unset. |
 | `WEBC_TRACE_MIGRATION_QUERIES` | Present → print each migration's SQL. Value is irrelevant; only presence matters. |
 | `WEBC_TLS_CERT` / `WEBC_TLS_KEY` | PEM paths; must be set together. |
 
-Unset, the DB is `~/.sqlite3/webc/db`.
+Unset, the DB is `~/sqlite3/webc_c/db`.
 
 ## Known gaps
 
@@ -202,19 +204,22 @@ is a separate hardcoded string and does not reflect the array either.
 ### The database may be refused at startup
 
 ```
-ERROR: /home/playme/.sqlite3/webc/db: Database scheme is too new. Contains
+ERROR: /home/playme/sqlite3/webc_c/db: Database scheme is too new. Contains
 more migrations applied than expected. Update your application.
 ERROR: Failed to initialize DB pool connection 0
 Listening to http://127.0.0.1:8080/ (coroutine mode)
 ```
 
-`db_pool_init()` stops at the first failed connection and returns **without**
-setting `db_pool_initialized`, so `db_pool_get()` retries and fails on every
-request. The server still listens: pages that need the database return 500.
+`db_pool_init()` stops at the first failed connection and **latches**: the
+pool stays down for the whole process, so `db_pool_get()` refuses immediately
+(one log line) instead of re-running eight opens plus eight schema checks on
+every request. The server still listens: pages that need the database return
+500 until the DSN/schema is fixed and the process restarts.
 
-This is the live state of this checkout — see
-[dev-log.md](dev-log.md) for the analysis. The design decision behind the
-error itself is D9 in [decisions.md](decisions.md).
+The retry storm this describes was fixed on 2026-11-05 (pool checkout +
+latched init) — see [dev-log.md](dev-log.md) for the original analysis. The
+design decision behind the refusal itself is D9 in
+[decisions.md](decisions.md).
 
 ## Recipes
 

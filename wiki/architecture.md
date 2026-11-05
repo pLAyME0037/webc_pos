@@ -6,7 +6,8 @@ How a request becomes bytes, and which file owns each step.
 
 ```
         ┌────────────────────────── src/webc.c ───────────────────────────┐
-        │ main(): resolve $HOME, WEBC_DB, dispatch CLI verb               │
+        │ main(): resolve $HOME + env (WEBC_DEFAULT_SQL, WEBC_DB,        │
+        │         WEBC_CONNECTION_STRING), dispatch CLI verb             │
         │   serve ─▶ coroutine_server_run(addr, port)                     │
         └───────────────────────────────┬─────────────────────────────────┘
                                         ▼
@@ -39,9 +40,10 @@ How a request becomes bytes, and which file owns each step.
                     └──────────────────┬────────────────────┘
                                        ▼
                      handler (feature module)
-                       ├─ db_pool_get()
-                       │    └─ open_webc_db(): verify migration history
-                       │       byte-for-byte, apply pending, one transaction
+                       ├─ open_webc_db(): pool checkout (in-use tracked;
+                       │    busy pool → transient connection)
+                       │    └─ schema checked once per (dialect, DSN):
+                       │       history byte-for-byte, apply pending, txn
                        ├─ SQL through the Sql_Driver vtable
                        └─ render:
                             PAGE_BEGIN(sc, title, route)
@@ -57,9 +59,14 @@ How a request becomes bytes, and which file owns each step.
 
 `main()` does four things and then gets out of the way:
 
-1. Requires `$HOME` — exits 1 with a message naming `~/.sqlite3/webc/` if unset.
-2. Resolves `WEBC_DB` into `WEBC_DB_PATH` + `WEBC_DIR_PATH`; with no override
-   these are `~/.sqlite3/webc/db` and its parent.
+1. Requires `$HOME` — exits 1 with a message naming `~/sqlite3/webc_c/` if
+   unset.
+2. Resolves the database environment, in precedence order:
+   `WEBC_DEFAULT_SQL` (dialect pin) is read into the global first, then the
+   location: `WEBC_DB` > `WEBC_CONNECTION_STRING` > `~/sqlite3/webc_c/db`.
+   From the chosen string it derives `WEBC_DB_PATH` (the DSN, prefix intact)
+   and `WEBC_DIR_PATH` (the parent directory for a SQLite file path; `.` for
+   `mysql:`/`postgres:` DSNs, which are not file paths).
 3. Reads `WEBC_TRACE_MIGRATION_QUERIES`.
 4. Dispatches the CLI verb, defaulting to `help`.
 

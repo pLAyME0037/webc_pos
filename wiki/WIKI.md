@@ -13,13 +13,14 @@ vanilla JS only.
 - Build: ./build/bin/nob (compiled from root ./nob.c) -> build/bin/webc. New .c
   files under src/ are auto-globbed — no build edits needed (only new
   js/css/images need a root nob.c resources[] entry).
-- Run: webc serve [port], webc dev [port] (auto rebuild+reload); env WEBC_DB,
-  WEBC_TLS_CERT/WEBC_TLS_KEY (both or nothing).
+- Run: webc serve [port], webc dev [port] (auto rebuild+reload); env
+  WEBC_DB / WEBC_CONNECTION_STRING (location, DB wins), WEBC_DEFAULT_SQL
+  (dialect pin), WEBC_TLS_CERT/WEBC_TLS_KEY (both or nothing).
 - Tests: ./test/run.sh (builds; throwaway HOME+WEBC_DB under /tmp; never
   touches real DB). SKIP_BUILD=1 to reuse build. Suites: http_test.py (sqlite),
   mysql_test.py (own mariadbd), https_test.py. Baseline before POS work:
   **140 passing (94 + 40 + 6)**.
-- Real DB ~/.sqlite3/webc/db — NEVER write to it from tests/tools.
+- Real DB ~/sqlite3/webc_c/db — NEVER write to it from tests/tools.
 
 ## Directory map
 - third_party/ — vendored deps: coroutine/, nob/nob.h, sqlite-amalgamation-3460100/.
@@ -55,10 +56,10 @@ vanilla JS only.
 - test/ — run.sh, http_test.py, mysql_test.py, https_test.py, testlib.py
   (Client, Checker, db_query = scalar, db_exec), golden/ byte-exact pins.
 - migrations/000N_name/{sqlite3,mysql,postgres}.sql — per-dialect, applied in
-  ONE transaction => NO PRAGMAs inside files (they run in open_webc_db());
-  sqlite files byte-exact for existing DBs (golden-pinned); list = static
-  migrations[] in src/db/db.c; golden check list hardcoded in http_test.py
-  (~line 80: for mig in ("0001_notes","0002_users")).
+  ONE transaction => NO PRAGMAs inside files (connection PRAGMAs run in
+  sqlite_drv_open()); sqlite files byte-exact for existing DBs (golden-pinned);
+  list = static migrations[] in src/db/db.c; golden check list hardcoded in
+  http_test.py (~line 85: 0001_notes, 0002_users, 0003_pos_eshop).
 
 ## Hard rules (user)
 - NO generic CRUD layer; NO sql_each — inline sql_step loops with column++.

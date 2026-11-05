@@ -82,6 +82,18 @@ struct db_t {
     const Sql_Driver *drv;
     void             *conn;      // driver-private connection (sqlite3*, ...)
     char              err[256];  // fallback message while conn is unavailable
+
+    // Owned copy of the dsn this connection was opened with: sqlite paths are
+    // what the backup/restore path renames, and every error message that
+    // names the database uses it instead of the process-wide global (so a
+    // second connection opened through webc_open_db_spec() reports its own
+    // database, not the primary one).
+    char             *dsn;
+    int               txn_depth; // open transactions on this connection
+    int               pool_slot; // index into the primary pool, -1 when the
+                                 // connection is not pooled (spec opens and
+                                 // the transient fallback). db_close() uses
+                                 // it to release instead of destroying.
 };
 
 struct sql_stmt {
@@ -92,7 +104,8 @@ struct sql_stmt {
 /* -- lifecycle ------------------------------------------------------------
  * dsn: file path for sqlite (mysql/pg connection strings come with their
  * drivers). db is heap-allocated; db_close() closes the connection and frees
- * it. Returns NULL on failure (message already logged). */
+ * it. The dsn is copied into db->dsn (it outlives the caller's buffer).
+ * Returns NULL on failure (message already logged). */
 db_t       *db_open(sql_lang_t lang, const char *dsn);
 void        db_close(db_t *db);
 const char *db_errmsg(db_t *db);
@@ -189,6 +202,7 @@ static inline bool sql_txn_begin(db_t *db) {
         nob_log(NOB_ERROR, "sql_txn_begin: %s", db_errmsg(db));
         return false;
     }
+    db->txn_depth += 1;
     return true;
 }
 
@@ -198,6 +212,7 @@ static inline bool sql_txn_commit(db_t *db) {
         nob_log(NOB_ERROR, "sql_txn_commit: %s", db_errmsg(db));
         return false;
     }
+    if (db->txn_depth > 0) db->txn_depth -= 1;
     return true;
 }
 
@@ -207,6 +222,7 @@ static inline bool sql_txn_rollback(db_t *db) {
         nob_log(NOB_ERROR, "sql_txn_rollback: %s", db_errmsg(db));
         return false;
     }
+    if (db->txn_depth > 0) db->txn_depth -= 1;
     return true;
 }
 

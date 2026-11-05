@@ -19,6 +19,12 @@ db_t *db_open(sql_lang_t lang, const char *dsn) {
     db_t *db = calloc(1, sizeof(*db));
     if (!db) return NULL;
     db->lang = lang;
+    db->pool_slot = -1;
+    db->dsn = strdup(dsn);
+    if (!db->dsn) {
+        free(db);
+        return NULL;
+    }
 
     switch (lang) {
     case SQL_SQLITE:
@@ -39,17 +45,15 @@ db_t *db_open(sql_lang_t lang, const char *dsn) {
     if (!db->drv || !db->drv->open(db, dsn)) {
         nob_log(NOB_ERROR, "db_open: %s: %s", dsn,
                 db->drv ? db->drv->errmsg(db) : db->err);
+        free(db->dsn);
         free(db);
         return NULL;
     }
     return db;
 }
 
-void db_close(db_t *db) {
-    if (!db) return;
-    if (db->drv && db->drv->close) db->drv->close(db);
-    free(db);
-}
+// db_close() lives in db.c: closing must first hand a pooled connection back
+// to the pool (see db_pool_release) instead of destroying it.
 
 const char *db_errmsg(db_t *db) {
     if (!db || !db->drv || !db->drv->errmsg) return "no database connection";
