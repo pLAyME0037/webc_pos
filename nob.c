@@ -212,14 +212,13 @@ static bool write_build_time_header(const char *webc_build_time) {
 // Returned as a list rather than appended straight to a Cmd because each of
 // the 55 per-file compiles needs the same flags: running pkg-config once
 // per file would be 110 extra process spawns per build.
-static bool collect_pkg_config(const char *package, const char *option, Nob_File_Paths *list) {
+static bool collect_pkg_config(const char *package, const char *option,
+                               Nob_File_Paths *list)
+{
     const char *flags_path = BUILD_FOLDER"pkgconfig.flags";
     Cmd tmp = {0};
     cmd_append(&tmp, "pkg-config", option, package);
     if (!cmd_run(&tmp, .stdout_path = flags_path)) {
-        fprintf(stderr, "ERROR: `pkg-config %s %s` failed - required to build "
-                "the MySQL driver (install pkg-config and %s).\n",
-                option, package, package);
         return false;
     }
     String_Builder sb = {0};
@@ -231,6 +230,24 @@ static bool collect_pkg_config(const char *package, const char *option, Nob_File
     }
     sb_free(sb);
     return true;
+}
+
+static void collect_pkg_config_optional(const char *package, const char *option,
+                                        Nob_File_Paths *list, const char *warn_msg)
+{
+    if (!collect_pkg_config(package, option, list)) {
+        if (warn_msg) nob_log(NOB_WARNING, "%s", warn_msg);
+    }
+}
+
+static void append_pkg_config_optional(Cmd *cmd, const char *package,
+                                       const char *option)
+{
+    Nob_File_Paths list = {0};
+    if (collect_pkg_config(package, option, &list)) {
+        for (size_t i = 0; i < list.count; ++i) cmd_append(cmd, list.items[i]);
+        nob_da_free(list);
+    }
 }
 
 // Append `pkg-config <option> <package>` output to `cmd`.
@@ -775,7 +792,8 @@ int main(int argc, char **argv) {
     // 10. Compile only the stale ones, each into its own object with a .d
     //     file beside it. On an untouched tree this loop compiles nothing.
     Nob_File_Paths cflags = {0};
-    if (!collect_pkg_config("libmariadb", "--cflags", &cflags)) return 1;
+    collect_pkg_config_optional("libmariadb", "--cflags", &cflags,
+                                "Cannot find libmariadb, MySQL is disable");
     if (!collect_pkg_config("openssl", "--cflags", &cflags)) return 1;
 
     size_t compiled = 0;
@@ -798,7 +816,7 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < sources.count; ++i) cmd_append(&link, sources.items[i].obj);
     nob_cmd_append(&link, SQLITE3_OBJ_PATH, COROUTINE_OBJ_PATH);
 
-    if (!append_pkg_config(&link, "libmariadb", "--libs")) return 1;
+    append_pkg_config_optional(&link, "libmariadb", "--libs");
     if (!append_pkg_config(&link, "openssl", "--libs")) return 1;
 
     const char *proj_dir = get_current_dir_temp();

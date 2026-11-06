@@ -38,7 +38,7 @@ if [ -d "$DIR" ];then
     echo "[If not yet export ~/.local/bin then run:]"
     echo "echo 'export PATH="\$HOME/.local/bin:\$PATH"' >> ~/.bashrc"
     echo ""
-    echo "[Run] cc -o ./build/bin/nob nob.c && ./build.sh"
+    echo "[Run] mkdir ~/github/webc_pos/build/bin && cc -o ./build/bin/nob nob.c && ./build.sh"
     echo "[Run] ./build/bin/[serve, dev] 8081"
     echo "[Info] <serve> for serving the website"
     echo "[Info] <dev> for serving the website with hot reload"
