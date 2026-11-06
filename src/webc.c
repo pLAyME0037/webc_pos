@@ -32,8 +32,28 @@
 #define DEFAULT_SERVE_PORT 8080
 #define DEFAULT_COMMAND "help"
 
-// Computed at runtime in main()
-static const char *HOME_PATH = NULL;
+/* ---- Default database ----------------------------------------------------
+ * The ONE place to edit the connection string: change it, rebuild
+ * (`./build/bin/nob`). Precedence (documented here, nowhere else):
+ *   WEBC_DB > WEBC_CONNECTION_STRING > WEBC_DEFAULT_DSN > nothing.
+ * Nothing set = no connection is ever attempted; DB routes answer
+ * "no database configured".
+ *
+ * Examples:
+ *   "mysql:user=root;password=secret;database=webc;socket=/run/mysqld/mysqld.sock"
+ *   "postgres:host=127.0.0.1;port=5432;database=webc"   (driver: stub)
+ *   "/srv/data/webc.db"                                 (sqlite file)
+ *
+ * Dialect = the DSN prefix (`mysql:` / `postgres:`, else sqlite), or the
+ * WEBC_DEFAULT_SQL env pin. Tests set WEBC_DB, so they win over this. */
+static const char *WEBC_DEFAULT_DSN = "~/sqlite3/webc_c/db";
+// WEBC_DEFAULT_DSN = "mysql:user=root;"
+//                          "password=;"
+//                          "database=webc_pos;"
+//                          "socket=/run/mysqld/mysqld.sock";
+
+// #define HOME (getenv(HOME))
+// WEBC_DEFAULT_DSN = "HOME/sqlite3/webc_c/db";
 
 typedef struct Command {
     const char *name;
@@ -347,46 +367,31 @@ bool help_run(Command *self, const char *program_name, int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-    HOME_PATH = getenv("HOME");
-    if (HOME_PATH == NULL) {
-        fprintf(stderr, "ERROR: No $HOME environment variable is setup. We "
-                "need it to find the location of ~/sqlite3/webc_c/ directory.\n");
-        return 1;
-    }
-    // Spec 7.1 env resolution, in precedence order:
-    //   WEBC_DEFAULT_SQL  - pin the dialect (SQLITE3/MYSQL/POSTGRES),
-    //                       overriding prefix detection;
-    //   WEBC_DB           - full DSN/path (tests, alternate instances);
-    //   WEBC_CONNECTION_STRING - raw DSN, used when WEBC_DB is unset;
-    //   default           - $HOME/sqlite3/webc_c/db.
-    WEBC_DEFAULT_SQL = getenv("WEBC_DEFAULT_SQL");
+    // Resolution order: see WEBC_DEFAULT_DSN above (documented once).
+    db_cfg.default_sql = getenv("WEBC_DEFAULT_SQL");
     const char *webc_db = getenv("WEBC_DB");
     const char *webc_conn = getenv("WEBC_CONNECTION_STRING");
-    if (webc_db && webc_db[0]) {
-        WEBC_DB_PATH = strdup(webc_db);
-    } else if (webc_conn && webc_conn[0]) {
-        WEBC_DB_PATH = strdup(webc_conn);
-    } else {
-        WEBC_DIR_PATH = strdup(temp_sprintf("%s/sqlite3/webc_c", HOME_PATH));
-        WEBC_DB_PATH = strdup(temp_sprintf("%s/db", WEBC_DIR_PATH));
-    }
-    // WEBC_DIR_PATH is the parent directory of a sqlite file DSN (the legacy
-    // file->directory migration dance); non-sqlite DSNs are not file paths, so
-    // there is no directory to derive - "." keeps the global non-NULL.
-    if (!WEBC_DIR_PATH) {
-        if (strncmp(WEBC_DB_PATH, "mysql:", 6) == 0 ||
-            strncmp(WEBC_DB_PATH, "postgres:", 9) == 0) {
-            WEBC_DIR_PATH = strdup(".");
+    const char *dsn = (webc_db && webc_db[0])     ? webc_db
+                    : (webc_conn && webc_conn[0]) ? webc_conn
+                                                  : WEBC_DEFAULT_DSN;
+    db_cfg.dsn = (dsn && dsn[0]) ? strdup(dsn) : NULL;
+    db_cfg.dir = NULL;
+    if (db_cfg.dsn) {
+        // dir = parent directory of a sqlite file DSN (the legacy
+        // file->directory migration dance). mysql/postgres DSNs are not
+        // file paths: no directory to derive, "." keeps it inert.
+        if (strncmp(db_cfg.dsn, "mysql:", 6) == 0 ||
+            strncmp(db_cfg.dsn, "postgres:", 9) == 0) {
+            db_cfg.dir = strdup(".");
         } else {
-            const char *slash = strrchr(WEBC_DB_PATH, '/');
-            WEBC_DIR_PATH = strdup(slash && slash != WEBC_DB_PATH
-                                   ? temp_sprintf("%.*s", (int) (slash - WEBC_DB_PATH),
-                                                  WEBC_DB_PATH)
-                                   : ".");
+            const char *slash = strrchr(db_cfg.dsn, '/');
+            db_cfg.dir = strdup(slash && slash != db_cfg.dsn
+                                ? temp_sprintf("%.*s",
+                                               (int) (slash - db_cfg.dsn),
+                                               db_cfg.dsn)
+                                : ".");
         }
     }
-    setenv("WEBC_DB_PATH", WEBC_DB_PATH, 1);
-    setenv("WEBC_DIR_PATH", WEBC_DIR_PATH, 1);
     WEBC_TRACE_MIGRATION_QUERIES = getenv("WEBC_TRACE_MIGRATION_QUERIES") != NULL;
 
     const char *program_name = shift(argv, argc);

@@ -150,7 +150,11 @@ Set before dispatch, so they affect every command including `help`:
 | `WEBC_TRACE_MIGRATION_QUERIES` | Present → print each migration's SQL. Value is irrelevant; only presence matters. |
 | `WEBC_TLS_CERT` / `WEBC_TLS_KEY` | PEM paths; must be set together. |
 
-Unset, the DB is `~/sqlite3/webc_c/db`.
+Unset, the DB is `~/sqlite3/webc_c/db`. Between env and that default sits a
+**compiled-in constant**: `WEBC_DEFAULT_DSN` above `main()` in `src/webc.c` —
+edit the DSN there and rebuild (`./build/bin/nob`) to change the database of
+every run permanently, no env vars needed. Env still wins over it, so tests
+stay isolated.
 
 ## Known gaps
 

@@ -976,3 +976,65 @@ edit needed.
 - gitignored `resource/image/*.png` still blocks a fresh-clone build.
 - pool concurrency behaviour (checkout under load) has no test — noted in
   `wiki/testing.md`.
+
+---
+
+## 2026-11-05 (2) — compiled-in default DSN in `webc.c`
+
+### What is beginning implementation
+
+A single editable constant in `src/webc.c` (`WEBC_DEFAULT_DSN`) so the
+database connection string lives in source: edit, `./build/bin/nob`, done.
+Motivation (user): today the only way off the hardcoded
+`$HOME/sqlite3/webc_c/db` is injecting env vars per terminal — no place in
+the code to change once.
+
+Resolution becomes: `WEBC_DB` > `WEBC_CONNECTION_STRING` >
+`WEBC_DEFAULT_DSN` (compiled) > `$HOME/sqlite3/webc_c/db`. Env keeps
+precedence so `test/run.sh` and `mysql_test.py` are unaffected. The dialect
+still comes from the DSN prefix (`mysql:` / `postgres:`) or the
+`WEBC_DEFAULT_SQL` pin — no second constant.
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | env resolution (`WEBC_DB`, `WEBC_CONNECTION_STRING`, `WEBC_DEFAULT_SQL`), default `$HOME` path, `WEBC_DIR_PATH` derivation |
+| not yet | compiled-in DSN constant — this entry implements it |
+| out of scope | geo (or any) tables in a separate database — `webc_open_db_spec()` exists but no table routing; user confirmed it was an example, not a requirement |
+
+### Results (2026-11-05, same day)
+
+| | |
+|---|---|
+| shipped | `static const char *WEBC_DEFAULT_DSN` above `main()` in `src/webc.c` (doc comment carries the mysql/postgres/sqlite examples); resolution `WEBC_DB` > `WEBC_CONNECTION_STRING` > `WEBC_DEFAULT_DSN` > `$HOME/sqlite3/webc_c/db` |
+| smoke | constant set to `/tmp/.../confdb` → fresh DB created (5.5 MB, all migrations), HTTP 200, zero errors; `WEBC_DB` beats the constant (`env_wins` DB created, `confdb` untouched); constant reverted to `NULL`, rebuilt |
+| tests | `SKIP_BUILD=1 ./test/run.sh` → 21 failures, **identical distribution** to the run above (119/1, 372/17, 118/0, 48/0, 157/3, 32/0, 41/0, 6/0) — no regression |
+| wiki | `database.md` + `cli.md` env tables gain the compiled default row |
+
+To run MariaDB permanently: set the constant to the `mysql:` DSN in
+`src/webc.c`, rebuild — no env vars needed. Tests keep working because env
+still wins.
+
+---
+
+## 2026-11-06 — design flaws: seed port, lazy connections, no baked default
+
+### What is beginning implementation
+
+Three user-reported design flaws (decisions taken same day):
+
+| # | Flaw | Fix decided |
+|---|---|---|
+| A | `migrations/0004_seed_pos/mysql.sql` — HEAD is comment-only with false reasoning ("INTENTIONALLY SKIPPED because tests are sqlite-only"); working tree (user edit 2026-11-05 12:30) pasted the raw sqlite seed, which MySQL rejects (`INSERT OR IGNORE`, `strftime`, `printf`, `\|\|`) — `mysql_test.py` is **red right now** at 0004 | proper MySQL port: `INSERT IGNORE`, `DATE_SUB(UTC_TIMESTAMP(), ...)`, `LPAD`, `\|\|` via `PIPES_AS_CONCAT` session mode set once in `driver_mysql.c`; honest header; postgres stays comment-only (stub driver). Missing test coverage must not strip features from a dialect |
+| B | eager connections: `serve.c:368` runs `db_pool_init()` **before `listen()`** — 8 connections opened whether or not any request needs a DB; bad DSN discovered at startup instead of at use | **lazy + grow-on-demand**: first DB checkout opens connection 1, pool grows to `DB_POOL_SIZE` only under real contention, first-ever failure latches (no storm), later grow failure degrades to a transient connection. One process = one DSN, always; `webc_open_db_spec()` stays an opt-in API that no production path calls |
+| C | `webc.c`/`db.c` overdone: precedence documented twice; hardcoded `$HOME/sqlite3/webc_c` default buried in an `else` branch; three mutable `const char *` globals with `NULL` initializers | **no baked default**: resolution = env (`WEBC_DB` > `WEBC_CONNECTION_STRING`) > compiled `WEBC_DEFAULT_DSN` only; nothing set → no connection is attempted, DB routes answer "no database configured". `WEBC_DB_PATH`/`WEBC_DIR_PATH`/`WEBC_DEFAULT_SQL` become macros over one set-once `Db_Cfg` struct; precedence documented once |
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | everything except the three flaws above; suite = 21 known failures (`MD_Column` ×20, sidebar ×1) + **mysql_test red (flaw A)** |
+| not yet | A: mysql seed port; B: lazy pool; C: config-struct rewrite |
+| affected docs | `wiki/decisions.md` D9 (fail-at-first-use, not startup), D11 (no `$HOME` default anymore), `wiki/database.md`, `wiki/cli.md` (`HOME` no longer required for the DB), `wiki/architecture.md` startup step |
+| risk notes | `HOME` requirement exists *only* for the dead default → removed with it; `PIPES_AS_CONCAT` changes `||` semantics on mysql connections — verified no mysql-dialect SQL uses `\|\|` as logical OR before setting it; tests all set `WEBC_DB` explicitly, so removing the default cannot affect them |

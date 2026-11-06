@@ -63,7 +63,8 @@ How a request becomes bytes, and which file owns each step.
    unset.
 2. Resolves the database environment, in precedence order:
    `WEBC_DEFAULT_SQL` (dialect pin) is read into the global first, then the
-   location: `WEBC_DB` > `WEBC_CONNECTION_STRING` > `~/sqlite3/webc_c/db`.
+   location: `WEBC_DB` > `WEBC_CONNECTION_STRING` > the compiled-in
+   `WEBC_DEFAULT_DSN` constant in `webc.c` > `~/sqlite3/webc_c/db`.
    From the chosen string it derives `WEBC_DB_PATH` (the DSN, prefix intact)
    and `WEBC_DIR_PATH` (the parent directory for a SQLite file path; `.` for
    `mysql:`/`postgres:` DSNs, which are not file paths).

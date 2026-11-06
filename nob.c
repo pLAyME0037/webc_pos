@@ -111,8 +111,7 @@ int build_bundle(bool *changed) {
         size_t      size;
     } resources[] = {
         { .file_path = "./css/output.css" },
-        { .file_path = "./resource/image/user1.png" },
-        { .file_path = "./resource/image/know_me.png" },
+        { .file_path = "./resource/image/company_icon.png" },
         { .file_path = "./js/ListExpandSwitcher.js" },
         { .file_path = "./js/PaginationSwitcher.js" },
         { .file_path = "./js/GeoCascade.js" },

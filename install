@@ -2,6 +2,8 @@
 
 set -e
 
+DIR=~/github/webc_pos
+
 if [ -e /etc/os-release ]; then
     echo "ok"
 else
@@ -13,20 +15,33 @@ if [ -e /usr/bin/git ]; then
     cd ~
     mkdir -p github
     cd github/
-    # rm -rf ~/github/webc_pos
-    git clone --depth 1 https://github.com/pLAyME0037/webc_pos.git
+    if [ -d $DIR ]; then
+        cd $DIR
+        git pull
+    else
+        git clone --depth 1 https://github.com/pLAyME0037/webc_pos.git
+    fi
 else
-    echo "[ERROR] fail to install or disconnected"
+    echo "[ERROR] fail to install, disconnected make sure to install git first"
 fi
 
-DIR=~/github/webc_pos
 if [ -d "$DIR" ];then
     echo ""
     echo "============ done install webc_pos ============="
-    echo "[Run] cd webc_pos"
-    echo "[Run] ./build/bin/[serve, dev] 127.0.0.1 8081"
-    echo "[Info] serve for serving the website"
-    echo "[Info] dev for serving the website with hot reload"
+    echo "[Run] cd ~/github/webc_pos && ls -la"
+    echo ""
+    echo "================= dependences =================="
+    echo "sudo apt install build-essentail curl git"
+    echo "mkdir -p ~/.local && mkdir -p ~/.local/bin"
+    echo "wget -P ~/.local/bin https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.4/tailwindcss-linux-x64"
+    echo "chmod +x ~/.local/bin/tailwindcss-linux-x64"
+    echo "[If not yet export ~/.local/bin then run:]"
+    echo "echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc"
+    echo ""
+    echo "[Run] cc -o ./build/bin/nob nob.c && ./build.sh"
+    echo "[Run] ./build/bin/[serve, dev] 8081"
+    echo "[Info] <serve> for serving the website"
+    echo "[Info] <dev> for serving the website with hot reload"
     echo "===================== End ======================"
 else
     echo "dir $DIR not found"

@@ -365,7 +365,9 @@ static int set_nonblocking(int fd) {
 void coroutine_server_run(const char *addr, uint16_t port) {
     coroutine_init();
     if (!tls_server_init()) return;  // misconfigured TLS must not serve plaintext
-    db_pool_init();
+    // No db_pool_init() here: connections open lazily on the first request
+    // that needs the database (db.c), so serving static files or a refused
+    // DSN never costs a connection at startup.
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {

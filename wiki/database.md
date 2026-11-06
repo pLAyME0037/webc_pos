@@ -5,13 +5,15 @@ How three SQL dialects share one schema, one pool and one migration history.
 ## Choosing a dialect and a database
 
 Environment resolution happens once in `main()` (`src/webc.c`) before
-anything touches the database. Four variables, no config file:
+anything touches the database. Four variables plus one compiled-in constant,
+no config file:
 
 | Variable | Role | Precedence |
 |---|---|---|
 | `WEBC_DEFAULT_SQL` | pin the dialect: `SQLITE3` / `MYSQL` / `POSTGRES` (case-insensitive). Overrides prefix detection | wins over the prefix, dialect only |
 | `WEBC_DB` | full DSN or file path (tests, alternate instances) | wins for the location |
 | `WEBC_CONNECTION_STRING` | raw DSN, read only when `WEBC_DB` is unset | fallback |
+| `WEBC_DEFAULT_DSN` | **compiled-in** constant above `main()` in `src/webc.c` — edit it and rebuild to point the binary somewhere else permanently (e.g. the `mysql:` DSN) | fallback to env |
 | *(none)* | `~/sqlite3/webc_c/db` | default |
 
 `webc_db_lang()` (`src/db/db.c:599`) picks the dialect in three steps:

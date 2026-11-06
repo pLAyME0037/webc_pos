@@ -1,4 +1,4 @@
 build/*
-resource/*
+resource/image/upload/*
 tags
 compile_commands.json

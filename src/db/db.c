@@ -9,9 +9,7 @@
 #include "db.h"
 #include "sql.h"
 
-const char *WEBC_DIR_PATH = NULL;
-const char *WEBC_DB_PATH = NULL;
-const char *WEBC_DEFAULT_SQL = NULL;
+Db_Cfg db_cfg = {0};  // set once in main() (src/webc.c); see db.h
 bool WEBC_TRACE_MIGRATION_QUERIES = false;
 
 bool txn_begin(sqlite3 *db) {
@@ -782,6 +780,12 @@ static void print_symlink_note(void) {
 
 // Primary database, opened directly (this is what the pool is filled with).
 static db_t *open_webc_db_raw(void) {
+    if (!WEBC_DB_PATH || !WEBC_DB_PATH[0]) {
+        nob_log(NOB_ERROR, "no database configured - set WEBC_DB or "
+                "WEBC_CONNECTION_STRING, or edit WEBC_DEFAULT_DSN in "
+                "src/webc.c");
+        return NULL;
+    }
     sql_lang_t lang = webc_db_lang();
     const char *dsn = webc_db_dsn();
     bool symlink_hint = false;
@@ -818,10 +822,14 @@ db_t *webc_open_db_spec(const char *spec) {
 }
 
 /* -- connection pool (primary database) -----------------------------------
- * Round-robin WITH in-use tracking: a slot is only handed to a caller that
- * does not already hold one, and db_close() releases it (pooled handles are
- * marked with pool_slot >= 0, so every existing `open_webc_db(); ...;
- * db_close();` call site keeps working unchanged).
+ * LAZY + grow-on-demand: nothing connects at startup (serve.c does not
+ * warm the pool - a static file server or `webc help` never touches a
+ * database). The first checkout opens connection 1; later checkouts open
+ * another slot only when every existing one is genuinely in use, up to
+ * DB_POOL_SIZE. Every slot tracks in_use, so a caller never holds two
+ * handles, and db_close() releases it (pooled handles carry pool_slot >= 0,
+ * so every existing `open_webc_db(); ...; db_close();` call site keeps
+ * working unchanged).
  *
  * Release undoes what a request left behind before the next one sees it:
  *   - an open transaction is rolled back (a handler that returned between
@@ -829,13 +837,12 @@ db_t *webc_open_db_spec(const char *spec) {
  *   - a sqlite connection with a leaked statement is recycled, because a
  *     leaked statement pins a read transaction on a handle others share.
  *
- * Init failure LATCHES: db_pool_get() then returns NULL immediately instead
- * of re-running 8 opens + 8 schema checks on every request (the behaviour
- * logged in dev-log as the retry storm behind the repeated 500s).
- *
- * When every slot is busy the caller gets a transient, unpooled connection -
- * a burst degrades to "one connection per request", i.e. the pre-pool
- * behaviour, instead of failing. */
+ * The FIRST open failure LATCHES the pool: db_pool_get() returns NULL
+ * forever after (one error, no per-request retry storm). A failed GROW
+ * later on does not latch - it degrades to a transient, unpooled
+ * connection so a burst costs "one connection per request" instead of a
+ * 500. One process talks to exactly one server: every slot opens the same
+ * primary DSN. */
 typedef struct {
     db_t *db;
     bool  in_use;
@@ -843,8 +850,8 @@ typedef struct {
 
 static Pool_Slot db_pool[DB_POOL_SIZE];
 static int db_pool_index = 0;
-static bool db_pool_started = false;  // init attempted (success or not)
-static bool db_pool_ready = false;    // all slots usable
+static int  db_pool_count = 0;        // slots open so far (lazy: 0 at start)
+static bool db_pool_latched = false;  // first open failed -> refuse forever
 
 // The "not pooled" teardown: close the connection and free the handle.
 static void db_destroy(db_t *db) {
@@ -854,38 +861,22 @@ static void db_destroy(db_t *db) {
     free(db);
 }
 
-void db_pool_init(void) {
-    if (db_pool_started) return;
-    db_pool_started = true;
-
-    for (int i = 0; i < DB_POOL_SIZE; ++i) {
-        db_t *db = open_webc_db_raw();
-        if (!db) {
-            fprintf(stderr, "ERROR: Failed to initialize DB pool connection %d\n", i);
-            // Clean up already created connections; db_pool_ready stays false.
-            for (int j = 0; j < i; ++j) {
-                db_destroy(db_pool[j].db);
-                db_pool[j] = (Pool_Slot) {0};
-            }
-            return;
-        }
-        db->pool_slot = i;
-        db_pool[i].db = db;
-        db_pool[i].in_use = false;
+// Open one more slot at the next index. False = open failed; the caller
+// decides what that means (first ever open -> latch, later grow -> degrade
+// to a transient connection).
+static bool pool_grow(void) {
+    db_t *db = open_webc_db_raw();
+    if (!db) {
+        fprintf(stderr, "ERROR: Failed to initialize DB pool connection %d\n",
+                db_pool_count);
+        return false;
     }
-    db_pool_ready = true;
-    printf("DB pool initialized with %d connections\n", DB_POOL_SIZE);
-}
-
-void db_pool_cleanup(void) {
-    if (!db_pool_started) return;
-    for (int i = 0; i < DB_POOL_SIZE; ++i) {
-        db_destroy(db_pool[i].db);
-        db_pool[i] = (Pool_Slot) {0};
-    }
-    db_pool_index = 0;
-    db_pool_started = false;
-    db_pool_ready = false;
+    db->pool_slot = db_pool_count;
+    db_pool[db_pool_count].db = db;
+    db_pool[db_pool_count].in_use = false;
+    db_pool_count++;
+    if (db_pool_count == 1) printf("DB pool: first connection open (lazy)\n");
+    return true;
 }
 
 // Hand a pooled connection back. Idempotent: releasing a slot that is already
@@ -930,28 +921,37 @@ static void db_pool_release(db_t *db) {
 }
 
 db_t *db_pool_get(void) {
-    if (!db_pool_started) db_pool_init();
-    if (!db_pool_ready) return NULL;  // latched: one clean refusal, no storm
+    if (db_pool_latched) return NULL;  // one clean refusal, no storm
 
-    for (int n = 0; n < DB_POOL_SIZE; ++n) {
-        int i = (db_pool_index + n) % DB_POOL_SIZE;
+    // First use opens connection 1; its failure latches the pool (bad DSN
+    // or refused schema: fail once, then every request gets NULL).
+    if (db_pool_count == 0 && !pool_grow()) {
+        db_pool_latched = true;
+        return NULL;
+    }
+
+    for (int n = 0; n < db_pool_count; ++n) {
+        int i = (db_pool_index + n) % db_pool_count;
         if (!db_pool[i].db || db_pool[i].in_use) continue;
         db_pool[i].in_use = true;
-        db_pool_index = (i + 1) % DB_POOL_SIZE;
+        db_pool_index = (i + 1) % db_pool_count;
         return db_pool[i].db;
     }
 
-    // Pool exhausted: a transient connection (pool_slot -1, destroyed by
-    // db_close) so concurrent bursts degrade instead of failing.
+    // Every slot busy: grow toward DB_POOL_SIZE. A failed grow does not
+    // latch (the pool itself is serving) - fall through to transient.
+    if (db_pool_count < DB_POOL_SIZE && pool_grow()) {
+        int i = db_pool_count - 1;
+        db_pool[i].in_use = true;
+        db_pool_index = (i + 1) % db_pool_count;
+        return db_pool[i].db;
+    }
+
+    // Degraded: a transient connection (pool_slot -1, destroyed by
+    // db_close) so a burst costs one connection per request instead of a 500.
     db_t *db = open_webc_db_raw();
     if (db) db->pool_slot = -1;
     return db;
-}
-
-void db_pool_put(db_t *db) {
-    // Release without destroying. db_close() already does this for pooled
-    // handles; kept because db.h documents it as the pool's API.
-    db_pool_release(db);
 }
 
 db_t *open_webc_db(void) {

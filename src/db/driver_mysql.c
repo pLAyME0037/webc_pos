@@ -107,6 +107,15 @@ static bool mysql_drv_open(db_t *db, const char *dsn) {
         mysql_close(conn);
         return false;
     }
+    // `||` concatenates, like in the sqlite dialect: the per-dialect seed
+    // files are ported line-for-line, so mysql.sql may contain `a || b`.
+    // No mysql-dialect SQL uses || as logical OR (verified 2026-11-06).
+    if (mysql_query(conn, "SET SESSION sql_mode = "
+                          "CONCAT_WS(',', @@sql_mode, 'PIPES_AS_CONCAT')")) {
+        snprintf(db->err, sizeof(db->err), "mysql: %s", mysql_error(conn));
+        mysql_close(conn);
+        return false;
+    }
     db->conn = conn;
     return true;
 }
