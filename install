@@ -36,7 +36,7 @@ if [ -d "$DIR" ];then
     echo "wget -P ~/.local/bin https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.4/tailwindcss-linux-x64"
     echo "chmod +x ~/.local/bin/tailwindcss-linux-x64"
     echo "[If not yet export ~/.local/bin then run:]"
-    echo "echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc"
+    echo "echo 'export PATH="\$HOME/.local/bin:\$PATH"' >> ~/.bashrc"
     echo ""
     echo "[Run] cc -o ./build/bin/nob nob.c && ./build.sh"
     echo "[Run] ./build/bin/[serve, dev] 8081"
