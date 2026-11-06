@@ -793,8 +793,9 @@ int main(int argc, char **argv) {
     //     file beside it. On an untouched tree this loop compiles nothing.
     Nob_File_Paths cflags = {0};
     collect_pkg_config_optional("libmariadb", "--cflags", &cflags,
-                                "Cannot find libmariadb, MySQL is disable");
-    if (!collect_pkg_config("openssl", "--cflags", &cflags)) return 1;
+                                "Cannot find libmariadb, MySQL is disabled");
+    collect_pkg_config_optional("openssl", "--cflags", &cflags,
+                                "Cannot find OpenSSH, https is disabled");
 
     size_t compiled = 0;
     for (size_t i = 0; i < sources.count; ++i) {
@@ -817,7 +818,7 @@ int main(int argc, char **argv) {
     nob_cmd_append(&link, SQLITE3_OBJ_PATH, COROUTINE_OBJ_PATH);
 
     append_pkg_config_optional(&link, "libmariadb", "--libs");
-    if (!append_pkg_config(&link, "openssl", "--libs")) return 1;
+    append_pkg_config_optional(&link, "openssl", "--libs");
 
     const char *proj_dir = get_current_dir_temp();
     if (!generate_compile_commands(proj_dir, &cflags, &sources)) return 1;
