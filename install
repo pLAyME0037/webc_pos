@@ -31,7 +31,7 @@ if [ -d "$DIR" ];then
     echo "[Run] cd ~/github/webc_pos && ls -la"
     echo ""
     echo "================= dependences =================="
-    echo "sudo apt install build-essentail curl git"
+    echo "sudo apt install build-essential curl git wget"
     echo "mkdir -p ~/.local && mkdir -p ~/.local/bin"
     echo "wget -P ~/.local/bin https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.4/tailwindcss-linux-x64"
     echo "chmod +x ~/.local/bin/tailwindcss-linux-x64"
