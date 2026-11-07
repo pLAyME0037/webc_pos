@@ -186,15 +186,15 @@ typedef enum {
 static Schema_Status create_schema_status(db_t *db, const char *webc_path);
 
 static Schema_Status create_schema_status(db_t *db, const char *webc_path) {
-    Schema_Status result = SCHEMA_OK;
-    sql_stmt stmt = {0};
-    bool began = false;
-    bool fk_off = false;
-    char **stored = NULL;          // history rows, copied out of the result
-    size_t stored_count = 0;
+    Schema_Status result   = SCHEMA_OK;
+    sql_stmt stmt          = {0};
+    bool began             = false;
+    bool fk_off            = false;
+    char **stored          = NULL;      // history rows, copied out of the result
+    size_t stored_count    = 0;
     size_t stored_capacity = 0;
-    bool *stored_used = NULL;      // which stored row matched a file
-    bool *matched = NULL;          // which migrations[] entry is applied
+    bool *stored_used      = NULL;      // which stored row matched a file
+    bool *matched          = NULL;      // which migrations[] entry is applied
 
     if (!migration_files_load(db->lang)) return_defer(SCHEMA_ERROR);
 

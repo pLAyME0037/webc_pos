@@ -80,6 +80,9 @@ python3 test/crud_contract_test.py "$HOST" "$PORT" "$TMP" || rc=$?
 # Needs chromium + python websocket; SKIPs loudly without them. Runs after
 # the contract suite so its staff row cannot shift any earlier count.
 python3 test/geo_cascade_test.py "$HOST" "$PORT" "$TMP" || rc=$?
+# Photo upload: same rationale as geo - the only suite that executes
+# ImageUpload.js (preview, crop modal, compression) in a real browser.
+python3 test/img_upload_test.py "$HOST" "$PORT" "$TMP" || rc=$?
 
 if [ -n "$MYSQL_PID" ] && ! wait "$MYSQL_PID"; then
     rc=1

@@ -20,7 +20,7 @@ MD_Column md_users_columns[] = {
     { .name = "username",    .label = "Username", .type = COL_TYPE_TEXT, .nullable = false },
     { .name = "email",       .label = "Email",    .type = COL_TYPE_TEXT, .nullable = false },
     { .name = "phone",       .label = "Phone",    .type = COL_TYPE_TEXT, .nullable = false },
-    { .name = "profile_pic", .label = "Picture",  .type = COL_TYPE_BLOB, .nullable = true },
+    { .name = "profile_pic", .label = "Picture",  .type = COL_TYPE_IMG, .nullable = true },
 };
 const size_t md_users_columns_count = ARRAY_LEN(md_users_columns);
 

@@ -116,6 +116,7 @@ int build_bundle(bool *changed) {
         { .file_path = "./js/ListExpandSwitcher.js" },
         { .file_path = "./js/PaginationSwitcher.js" },
         { .file_path = "./js/GeoCascade.js" },
+        { .file_path = "./js/ImageUpload.js" },
         { .file_path = "./js/sidebarSwitcher.js" },
         { .file_path = "./js/themeSwitcher.js" },
     };
@@ -304,8 +305,8 @@ bool build_sqlite3(void) {
     int rebuild_is_needed = needs_rebuild1(output_path, input_path);
     if (rebuild_is_needed < 0) return false;
     if (rebuild_is_needed) {
-        // NOTE: We are omitting extension loading because it depends on dlopen which prevents us from
-        // making webc statically linked
+        // NOTE: We are omitting extension loading because it depends on dlopen
+        // which prevents us from making webc statically linked
         Cmd cmd = {0};
         cmd_append(&cmd, "cc", "-Wall", "-Wextra", "-Wswitch-enum", "-ggdb",
                 "-I"SQLITE3_AMALGAMATION_FOLDER,
@@ -357,7 +358,8 @@ bool h_to_html_walk_func(Nob_Walk_Entry entry) {
     size_t prefix_len = strlen(data->display_root);
     if (input.count <= prefix_len 
             || strncmp(input.data, data->display_root, prefix_len) != 0) {
-        nob_log(NOB_ERROR, "Unexpected path %s outside %s", entry.path, data->display_root);
+        nob_log(NOB_ERROR, "Unexpected path %s outside %s",
+                entry.path, data->display_root);
         return false;
     }
 
@@ -413,9 +415,9 @@ bool h_to_html_walk_func(Nob_Walk_Entry entry) {
     if (out_fd == INVALID_FD) return false;
 
     cmd_append(&data->cmd, "./build/bin/tt", entry.path);
-    if (!cmd_run_sync_redirect_and_reset(&data->cmd, (Nob_Cmd_Redirect) {
-                .fdout = &out_fd }))
-    {
+    if (!cmd_run_sync_redirect_and_reset(&data->cmd, (Nob_Cmd_Redirect) { 
+            .fdout = &out_fd
+    })) {
         nob_fd_close(out_fd);
         nob_da_free(output);
         return false;
@@ -486,8 +488,13 @@ static bool mkdirs_for(const char *path) {
         // normal case on a fresh tree, and get_file_type() logs it as an
         // ERROR that would drown the real build output.
         struct stat st = {0};
-        if (dir.items[0] != '\0' && (stat(dir.items, &st) != 0 || !S_ISDIR(st.st_mode))) {
-            if (!mkdir_if_not_exists(dir.items)) { result = false; break; }
+        if (dir.items[0] != '\0'       && 
+            (stat(dir.items, &st) != 0 ||
+            !S_ISDIR(st.st_mode))) {
+            if (!mkdir_if_not_exists(dir.items)) {
+                result = false;
+                break;
+            }
         }
         dir.items[i] = '/';
     }
@@ -657,8 +664,12 @@ bool generate_compile_commands(const char *proj_dir,
     sb_append_cstr(&json, "]\n");
 
     bool changed = false;
-    bool result = write_file_if_changed("compile_commands.json", json.items, json.count, &changed);
-    if (result && changed) nob_log(NOB_INFO, "compile_commands.json: updated (%zu entries)", sources->count);
+    bool result = write_file_if_changed("compile_commands.json", json.items,
+                                        json.count, &changed);
+    if (result && changed) {
+        nob_log(NOB_INFO, "compile_commands.json: updated (%zu entries)",
+                sources->count);
+    }
 
     sb_free(json);
     return result;
@@ -706,7 +717,6 @@ static bool write_link_inputs(const Nob_File_Paths *objs) {
 }
 
 int main(int argc, char **argv) {
-    // nob__go_rebuild_urself(argc, argv, "src/nob.c", NULL);  // Temporarily disabled
     NOB_GO_REBUILD_URSELF(argc, argv);
     Cmd cmd = {0};
 
@@ -750,11 +760,12 @@ int main(int argc, char **argv) {
     //    and so is deliberately not part of this build rework. Its result is
     //    picked up for free below: output.css is a bundled resource, so
     //    build_bundle() reports whether it produced anything new.
-    cmd_append(&cmd, "tailwindcss-linux-x64", "-i", "./css/input.css", "-o", "./css/output.css", "--minify");
+    cmd_append(&cmd, "tailwindcss-linux-x64", "-i", "./css/input.css",
+               "-o", "./css/output.css", "--minify");
     if (!cmd_run_sync_and_reset(&cmd)) {
         printf("tailwindcss-linux-x64 not found.\n"
-                "[Recommend:] Download tailwindcss-linux-x64 and keep in ~/.local/bin\n"
-                "Or get href of tailwind web api\n");
+               "[Recommend:] Download tailwindcss-linux-x64 and keep in ~/.local/bin\n"
+               "Or get href of tailwind web api\n");
         return 1;
     }
 
@@ -772,14 +783,17 @@ int main(int argc, char **argv) {
     C_Sources sources = {0};
     Nob_File_Paths objs = {0};
     if (!collect_c_sources("src", &sources)) return 1;
-    for (size_t i = 0; i < sources.count; ++i) da_append(&objs, sources.items[i].obj);
+    for (size_t i = 0; i < sources.count; ++i) {
+        da_append(&objs, sources.items[i].obj);
+    }
 
     // 7. Is anything stale? Source + every header its .d file recorded.
     //    This pass only DECIDES; the stamp below can still invalidate
     //    src/webc.c, which is why the list is re-asked after it moves.
     bool any_stale = false;
     for (size_t i = 0; i < sources.count; ++i) {
-        int needs = obj_needs_rebuild(sources.items[i].obj, sources.items[i].src, sources.items[i].dep);
+        int needs = obj_needs_rebuild(sources.items[i].obj, sources.items[i].src,
+                                      sources.items[i].dep);
         if (needs < 0) return 1;
         sources.items[i].stale = needs != 0;
         if (needs) any_stale = true;
@@ -801,7 +815,8 @@ int main(int argc, char **argv) {
     // deleted) - no timestamp can see a deletion.
     if (!need_build) need_build = link_inputs_differ(&objs);
     if (!need_build) {
-        nob_log(NOB_INFO, "%s is up to date (%zu objects, nothing to do)", WEBC_BIN_PATH, sources.count);
+        nob_log(NOB_INFO, "%s is up to date (%zu objects, nothing to do)",
+                WEBC_BIN_PATH, sources.count);
         nob_da_free(objs);
         nob_da_free(sources);
         return 0;
@@ -819,15 +834,24 @@ int main(int argc, char **argv) {
         char webc_build_time[64] = {0};
         String_Builder out_sb = {0};
         if (!read_entire_file(BUILD_TIME_PATH, &out_sb)) return 1;
-        while (out_sb.count > 0 && isspace(out_sb.items[out_sb.count - 1])) out_sb.count -= 1;
-        if (out_sb.count < sizeof(webc_build_time)) memcpy(webc_build_time, out_sb.items, out_sb.count);
+        while (out_sb.count > 0 && isspace(out_sb.items[out_sb.count - 1])) {
+            out_sb.count -= 1;
+        }
+        if (out_sb.count < sizeof(webc_build_time)) {
+            memcpy(webc_build_time, out_sb.items, out_sb.count);
+        }
         sb_free(out_sb);
-        if (webc_build_time[0] == '\0') snprintf(webc_build_time, sizeof(webc_build_time), "Thu, 01 Jan 1970 00:00:00 GMT");
+        if (webc_build_time[0] == '\0') {
+            snprintf(webc_build_time, sizeof(webc_build_time),
+                     "Thu, 01 Jan 1970 00:00:00 GMT");
+        }
 
         if (!write_build_time_header(webc_build_time)) return 1;
 
         for (size_t i = 0; i < sources.count; ++i) {
-            int needs = obj_needs_rebuild(sources.items[i].obj, sources.items[i].src, sources.items[i].dep);
+            int needs = obj_needs_rebuild(sources.items[i].obj,
+                                          sources.items[i].src,
+                                          sources.items[i].dep);
             if (needs < 0) return 1;
             sources.items[i].stale = needs != 0;
         }
@@ -847,8 +871,11 @@ int main(int argc, char **argv) {
         if (!compile_c_source(&sources.items[i], &cflags)) return 1;
         ++compiled;
     }
-    if (compiled > 0) nob_log(NOB_INFO, "compiled %zu of %zu objects", compiled, sources.count);
-    else nob_log(NOB_INFO, "all %zu objects already up to date", sources.count);
+    if (compiled > 0) {
+        nob_log(NOB_INFO, "compiled %zu of %zu objects", compiled, sources.count);
+    } else {
+        nob_log(NOB_INFO, "all %zu objects already up to date", sources.count);
+    }
 
     // 11. Link the objects (skipped entirely by the fast path above).
     Cmd link = {0};
@@ -858,7 +885,9 @@ int main(int argc, char **argv) {
             "-I.",
             "-o", WEBC_BIN_PATH);
 
-    for (size_t i = 0; i < sources.count; ++i) cmd_append(&link, sources.items[i].obj);
+    for (size_t i = 0; i < sources.count; ++i) {
+        cmd_append(&link, sources.items[i].obj);
+    }
     nob_cmd_append(&link, SQLITE3_OBJ_PATH, COROUTINE_OBJ_PATH);
 
     append_pkg_config_optional(&link, "libmariadb", "--libs");

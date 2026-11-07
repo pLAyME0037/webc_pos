@@ -239,5 +239,7 @@ design decision behind the refusal itself is D9 in
 WEBC_DB=/tmp/x.db ./build/bin/webc serve     # private database
 WEBC_TRACE_MIGRATION_QUERIES=1 ./build/bin/webc serve   # watch migrations
 WEBC_TLS_CERT=c.pem WEBC_TLS_KEY=k.pem ./build/bin/webc serve   # https
+# no certs yet? make a throwaway pair first:
+openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -days 365 -nodes -subj /CN=localhost
 SKIP_BUILD=1 ./test/run.sh                   # test the current binary
 ```

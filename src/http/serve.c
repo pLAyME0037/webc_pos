@@ -57,8 +57,13 @@ Resource *find_resource(const char *file_path) {
 static SSL_CTX *tls_ctx = NULL;
 
 static const char *tls_error(void) {
-    const char *reason = ERR_reason_error_string(ERR_get_error());
-    return reason ? reason : "unknown TLS error";
+    unsigned long e = ERR_get_error();
+    if (!e) return "no OpenSSL error recorded (file missing or unreadable?)";
+    const char *reason = ERR_reason_error_string(e);
+    if (reason) return reason;
+    static char buf[48];
+    snprintf(buf, sizeof(buf), "openssl error 0x%lX", e);
+    return buf;
 }
 
 static bool tls_server_init(void) {
@@ -69,6 +74,27 @@ static bool tls_server_init(void) {
         fprintf(stderr, "ERROR: WEBC_TLS_CERT and WEBC_TLS_KEY must be set "
                         "together (got cert=%s key=%s)\n",
                 cert ? "yes" : "no", key ? "yes" : "no");
+        return false;
+    }
+
+    // Fail with the OS's own words first: OpenSSL turns a missing file into
+    // an empty error queue, which used to print "unknown TLS error".
+    if (access(cert, R_OK) != 0) {
+        int err = errno;
+        fprintf(stderr, "ERROR: cannot read TLS certificate %s: %s\n"
+                        "       generate a pair: openssl req -x509 -newkey "
+                        "rsa:2048 -keyout k.pem -out c.pem -days 365 -nodes "
+                        "-subj /CN=localhost\n",
+                cert, strerror(err));
+        return false;
+    }
+    if (access(key, R_OK) != 0) {
+        int err = errno;
+        fprintf(stderr, "ERROR: cannot read TLS private key %s: %s\n"
+                        "       generate a pair: openssl req -x509 -newkey "
+                        "rsa:2048 -keyout k.pem -out c.pem -days 365 -nodes "
+                        "-subj /CN=localhost\n",
+                key, strerror(err));
         return false;
     }
 
@@ -317,7 +343,22 @@ static void serve_request_coro(void *arg) {
                 coroutine_sleep_write(client_fd);
                 continue;
             }
-            fprintf(stderr, "ERROR: TLS handshake failed: %s\n", tls_error());
+            // Client-side outcomes, expected on any TLS port: classify them
+            // so they do not read like server faults (the live log showed
+            // both under ERROR).
+            const char *why = tls_error();
+            const char *hint = NULL;
+            if (strcmp(why, "http request") == 0) {
+                hint = " - peer sent plain HTTP to the TLS port";
+            } else if (strstr(why, "alert")) {
+                // e.g. "ssl/tls alert certificate unknown", "tlsv1 alert
+                // unknown ca" - the client's verdict on our cert/peer, not
+                // a server fault (self-signed, expired, wrong host, ...).
+                hint = " - client rejected the TLS handshake (usually an "
+                       "untrusted/self-signed certificate)";
+            }
+            fprintf(stderr, "%s: TLS handshake failed: %s%s\n",
+                    hint ? "NOTE" : "ERROR", why, hint ? hint : "");
             goto cleanup;
         }
     }

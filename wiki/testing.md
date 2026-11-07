@@ -48,6 +48,9 @@ SKIP_BUILD=1 ./test/run.sh # reuse the current build/bin/webc
 python3 test/mysql_test.py "$TMP"  > "$TMP/mysql_test.log"  2>&1 &   # background
 python3 test/https_test.py "$TMP"  > "$TMP/https_test.log"  2>&1 &   # background
 python3 test/http_test.py "$HOST" "$PORT" "$TMP"                     # foreground
+python3 test/crud_contract_test.py "$HOST" "$PORT" "$TMP"            # after http_test
+python3 test/geo_cascade_test.py "$HOST" "$PORT" "$TMP"              # real browser
+python3 test/img_upload_test.py "$HOST" "$PORT" "$TMP"               # real browser
 [ -n "$MYSQL_PID" ] && wait "$MYSQL_PID"; [ -n "$HTTPS_PID" ] && wait "$HTTPS_PID"
 cat "$TMP/mysql_test.log" "$TMP/https_test.log"   # only when the suite ran
 ```
@@ -65,6 +68,9 @@ finish. You get every failure in one run rather than one at a time.
 | Suite | Server | Backend | Skips when |
 |---|---|---|---|
 | `http_test.py` | shared (`$HOST:$PORT`) | SQLite (`$WEBC_DB`) | never |
+| `crud_contract_test.py` | shared (after `http_test`) | SQLite | never |
+| `geo_cascade_test.py` | shared (after the contract suite) | SQLite | no chromium, or python `websocket` missing |
+| `img_upload_test.py` | shared (after geo) | SQLite | no chromium, or python `websocket` missing |
 | `mysql_test.py` | own | throwaway `mariadbd` | webc built without libmariadb, or MariaDB tooling missing |
 | `https_test.py` | own, TLS | own throwaway SQLite DB | webc built without openssl, or `openssl` CLI missing |
 
@@ -130,6 +136,10 @@ test/
   run.sh          harness: build, isolate, spawn, run, teardown
   testlib.py      Checker — assertion helper shared by the suites
   http_test.py    SQLite suite (main)
+  crud_contract_test.py  form/handler contract (runs after http_test)
+  geo_cascade_test.py    real-browser suite for GeoCascade.js
+  img_upload_test.py     real-browser suite for ImageUpload.js (preview,
+                         crop modal, compression; skips without chromium)
   mysql_test.py   MariaDB suite (own server + own mariadbd)
   https_test.py   TLS suite (own cert + own server)
   golden/         pinned migration files

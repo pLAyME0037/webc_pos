@@ -242,7 +242,8 @@ void serve_pos_sale_post(Serve_Context *sc) {
         "LEFT JOIN product_variants v ON v.id = $1 AND v.product_id = p.id "
         "WHERE p.id = $2 AND p.deleted_at IS NULL;";
     static const char *const price_q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE] = price_sql, [SQL_MYSQL] = price_sql,
+        [SQL_SQLITE]   = price_sql,
+        [SQL_MYSQL]    = price_sql,
         [SQL_POSTGRES] = price_pg,
     };
     for (size_t i = 0; i < n && !fail; ++i) {
@@ -278,7 +279,14 @@ void serve_pos_sale_post(Serve_Context *sc) {
     if (!fail) {
         char tail[40];
         webc_uuid(tail);
-        { char *s = tail, *d = tail; while (*s) { if (*s != '-') *d++ = *s; ++s; } *d = 0; }
+        {
+            char *s = tail, *d = tail;
+            while (*s) {
+                if (*s != '-') *d++ = *s;
+                ++s;
+            }
+            *d = 0;
+        }
         time_t now = time(NULL);
         struct tm tmv;
         localtime_r(&now, &tmv);

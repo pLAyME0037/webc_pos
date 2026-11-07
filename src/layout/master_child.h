@@ -24,7 +24,7 @@ typedef enum {
     COL_TYPE_DATE,
     COL_TYPE_TEXTAREA,
     COL_TYPE_FK_SELECT,
-    COL_TYPE_BLOB,      /* stored image path; shown as its URL text */
+    COL_TYPE_IMG,
 } Col_Type;
 
 /* Composite column: ONE <td> (and one edit cell) holding N same-table

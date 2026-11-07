@@ -12,6 +12,21 @@ Status vocabulary:
 **blocked** = needs something first
 
 ---
+## 2026-11-07 — ImageUpload in master_child whole system — **done**
+
+Wired `js/ImageUpload.js` across the entire master-child engine
+(`master_child.h.tt`, `md_child_add_row.h.tt`, `md_child_rows.h.tt`, `md_child_tab.h.tt`):
+- `COL_TYPE_BLOB` renamed to `COL_TYPE_IMG` in `master_child.h`.
+- Activated `[data-img-upload]` for `COL_TYPE_IMG` and avatar composite cells on
+  part 0 (`pi == 0`).
+- Standardized image preview frame to `w-10 h-10` across master and child rows.
+- Existing image URL rendered in `src` attribute on edit rows so current photo
+  displays by default until replaced.
+- Added `enctype="multipart/form-data"` to master create, master edit, child add,
+  and child edit forms.
+- Re-armed `ImageUpload.js` on `document.addEventListener('md:swapped', iuInit)`
+  to support hot-swapped `#mc-root`.
+
 ## 2026-11-04 — Incremental build: per-file objects, 11.6 s → 0.5 s — **done**
 
 Every run recompiled all of `src/**` in full even when nothing had changed.
@@ -1125,3 +1140,139 @@ with `missing binary operator before token '('`. Renamed to
 cause was a concurrent `nob` run from the user's own terminal, not the
 gateway; both suite runs had already latched the right binary (SKIP lines
 printed from the 0/0 header, server spawned before the flip).
+
+---
+
+## 2026-11-07 — TLS startup error says "unknown TLS error" for a missing cert
+
+### What is beginning implementation
+
+`WEBC_TLS_CERT=c.pem WEBC_TLS_KEY=k.pem ./build/bin/webc serve` with no such
+files prints `ERROR: cannot load TLS certificate c.pem: unknown TLS error` -
+the OpenSSL queue was empty and the message names neither the missing file
+nor how to make one.
+
+- `tls_server_init()` checks the cert/key are readable first (`access(R_OK)`)
+  and reports `strerror(errno)` - "No such file or directory" instead of a
+  TLS mystery.
+- `tls_error()` stops lying: empty queue -> "no OpenSSL error recorded",
+  otherwise the reason (or the raw code when OpenSSL gives none).
+- `wiki/cli.md` recipe gains the self-signed generation line the `c.pem`
+  example always implied.
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | https serving itself (https_test 6/0 green) - only the failure message is wrong |
+| not yet | the two fixes above |
+
+### Results (2026-11-07, TLS error message)
+
+| | Shipped | Evidence |
+|---|---|---|
+| fail fast | `tls_server_init()` checks `access(cert/key, R_OK)` before touching OpenSSL: missing file now says `ERROR: cannot read TLS certificate c.pem: No such file or directory` and prints the `openssl req -x509 ...` one-liner that makes a pair | reproduced the user's exact command with no files: clear message + recipe |
+| honest `tls_error()` | empty error queue -> "no OpenSSL error recorded (file missing or unreadable?)"; OpenSSL reason when present; raw `openssl error 0x...` as last resort (was: always "unknown TLS error") | empty-file key -> `cannot load TLS private key bad.pem: unsupported` (real reason) |
+| docs + junk | `wiki/cli.md` recipe now shows the generation line the `c.pem` example implied; root `/*.pem` gitignored so local pairs never get committed | generated pair at repo root: banner `Listening to https://...`, `curl -k` 200, plaintext to the TLS port refused, `https_test` **6/0** |
+
+---
+
+## 2026-11-07 — TLS handshake failures logged as ERROR are client-side noise
+
+### What is beginning implementation
+
+Live https run shows `ERROR: TLS handshake failed: http request` (a plaintext
+client probed the TLS port) and `ERROR: TLS handshake failed: ssl/tls alert
+certificate unknown` (the client does not trust the self-signed cert).
+Both are the *client's* doing, both expected on any TLS port - logged as
+ERROR they read like server faults.
+
+`serve_request_coro()` classifies the reason before printing: plaintext probe
+and certificate-rejection alerts become `NOTE:` lines that say what happened
+and what to do; anything else stays `ERROR:`.
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | https serving itself (both messages are cosmetic) |
+| not yet | the classification |
+
+### Results (2026-11-07, handshake log classification)
+
+| | Shipped | Evidence |
+|---|---|---|
+| classify | handshake failure prints `NOTE:` (with a plain-language hint) instead of `ERROR:` when the reason is client-side: `http request` -> "peer sent plain HTTP to the TLS port"; any `... alert ...` (live variants: `ssl/tls alert certificate unknown`, `tlsv1 alert unknown ca`) -> "client rejected the TLS handshake (usually an untrusted/self-signed certificate)". Everything else stays `ERROR:` | live smoke: plaintext probe and a python client rejecting the self-signed cert both log `NOTE:` with the right hint; `curl -k` still 200; `https_test` **6/0** |
+
+---
+
+## 2026-11-07 — proper photo upload: icon button, live preview, crop, client-side compression
+
+### What is beginning implementation
+
+`Profile Pic` inputs (`display/user.h.tt`, `display/user_edit.h.tt`) are bare
+`<input type=file>` with no feedback: pick a file, nothing visible happens
+until the server round-trips. Ship the full client-side flow:
+
+| Piece | Behaviour |
+|---|---|
+| img input icon | the raw file input is replaced by a labelled button with an image icon (input stays in the form, visually hidden; label click opens the picker) |
+| selected-image preview | picking a file shows it immediately in a circular preview frame (avatar-shaped, `object-cover`) + the file name/size; edit page keeps its "current picture" row above |
+| crop UI (real) | a **Crop** button opens a modal: square viewport, drag to pan, zoom slider, Apply/Cancel. Apply draws the crop region to a canvas (512×512 square) and replaces the input's file via `DataTransfer`, so the multipart POST carries the cropped bytes - server unchanged (`save_uploaded_image` still magic-byte-checks + ffmpeg → webp) |
+| compression | modelled on chiragvaze/Image-Compressor `script.js`: canvas resize to max 1920px, quality 0.82, `canvas.toBlob` - runs on select (GIF skipped: animation would be flattened) and again on crop Apply. Compressed blob replaces `input.files`, so upload bandwidth shrinks without any server change |
+
+Mechanics:
+
+- new `js/ImageUpload.js`, loaded from `display/layout/header.h.tt` like the
+  other page scripts, and added to the explicit resource list in
+  `nob.c`'s `build_bundle()` (the bundle is a fixed list, not a glob).
+- markup hook is `data-img-upload` on the wrapper; the JS finds every
+  `input[type=file][name=profile_pic]` inside such wrappers - no per-page
+  JS, both templates get the same behaviour.
+- crop modal DOM is created by the JS (one per input, lazily) so the two
+  templates do not duplicate ~40 lines of modal markup.
+- tailwind: v4 auto-scans the whole tree (nob.c comment), so classes in
+  `js/` and `.tt` are picked up without touching `css/input.css`.
+- tests: `http_test` posts multipart bytes directly (no markup assertions)
+  - unaffected. A JS bug is invisible to every suite except geo_cascade's
+  pattern, so a small chromium test (skip without chromium) may follow.
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | server-side upload end to end (magic bytes, ffmpeg webp, `http_test` upload cases green) |
+| not yet | icon button, preview, crop modal, compression, the new script in the bundle |
+| affected docs | `wiki/templates.md` (new js script + data-attr convention), `wiki/dev-log.md` |
+| risk notes | `DataTransfer` file replacement must keep `accept` + server validation happy (still real image bytes); GIF must not be compressed/cropped (animation lost); tailwind classes created inside JS strings are only styled if the scanner sees them - verify in `css/output.css`; bundle list miss = stale/absent script with no build error |
+
+### Results (2026-11-07, photo upload)
+
+| | Shipped | Evidence |
+|---|---|---|
+| markup | both `Profile Pic` fields (`display/user.h.tt`, `display/user_edit.h.tt`) are now a `[data-img-upload]` wrapper: circular preview frame with placeholder icon, **image-icon "Choose image" button** (label over a `sr-only` file input), Crop button (hidden until a file is picked), name/size line | served `/users` page: `data-img-upload=1 data-img-input=1 data-img-crop=1`, script tag present; edit page keeps its "current picture" row above the same wrapper |
+| JS | new `js/ImageUpload.js` (in `header.h.tt` + `nob.c` `resources[]`), DOMContentLoaded-wired: preview from an object URL, **canvas compression on select** walking `IU_ATTEMPTS` (1920/0.82 → 640/0.40) until the blob is under `MAX_UPLOAD_IMAGE_SIZE` − margin, `DataTransfer` writes the result back into `input.files`; GIF skipped (animation would freeze); stale-pick guard via a sequence counter | browser suite: a 5.7 MB noise PNG (bigger than the 2 MB server cap) came out under cap and smaller than the original; name line shows `orig · A → B` |
+| crop | **real crop UI**: modal built by the script (per input), square viewport, drag-to-pan (pointer events + capture, defensive for synthetic events), zoom slider **and** wheel (relative to the "cover" scale, viewport-centre pinned, clamped so the square never shows empty edges), Apply maps the visible square back to source pixels and draws a **512×512** blob into the input; Escape/backdrop/Cancel close | suite: open → zoom changes the transform → CDP mouse drag changes it again → Apply leaves exactly one 512×512 file in the input, name line says `cropped`, modal closed |
+| server | unchanged — `save_uploaded_image()` still magic-byte-checks and ffmpeg→webp512; the client just sends smaller/real bytes | suite: form submit via `fetch` follows the PRG (`redirected=True`), row lands with `/resource/image/upload/*.webp`, file exists on disk (recorded in `uploads.txt` for cleanup) |
+| test | new `test/img_upload_test.py` (25 checks) wired into `run.sh` after geo; same rationale as geo_cascade — the only suite that *executes* `ImageUpload.js`; skips loudly without chromium/websocket; stale-bundle md5 guard (serves-from-bundle.h means a stale binary silently runs old JS) | standalone **25/0**; full suite in a clean build: **21 fails = exact baseline** (sidebar 1 + MD_Column 20) with `img_upload 25/0` in-suite |
+
+**Two bugs the browser suite caught that no amount of reading would have:**
+
+1. `scale(0)`: the modal measured `viewport.clientWidth` **while still
+   `display:none`** → 0px → cover=0 → invisible image, dead zoom, dead pan.
+   Fix: un-hide first, then measure.
+2. `IU_QUALITY` reference left behind after the constant was folded into the
+   attempt list → `ReferenceError` inside the Apply click handler → crop
+   silently never completed.
+
+**Design note:** the first compression pass (single 1920/q0.82 like the
+reference) can *exceed* the server's 2 MB `MAX_UPLOAD_IMAGE_SIZE` — the POST
+would be rejected after all the client work. Hence the attempt list walks
+quality/dimensions down until the blob fits (constant mirrors `utils.h` with
+a margin for the multipart envelope; PNG inputs stay PNG so alpha survives).
+
+**Blocked note:** the final in-repo build was blocked mid-round by an
+uncommitted `src/pos/sale.c` edit (compile error, user's own concurrent
+work) — verification ran in a throwaway copy of the tree with only that one
+file reverted; everything else (templates, js, nob.c, run.sh) is identical
+to the working tree.

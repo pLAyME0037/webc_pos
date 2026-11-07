@@ -2,3 +2,5 @@ build/*
 resource/image/upload/*
 tags
 compile_commands.json
+/*.pem
+__pycache__/

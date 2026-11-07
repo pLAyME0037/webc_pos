@@ -178,6 +178,23 @@ symbol table and no lookup at runtime.
 both the full page and the bare pagination store that
 `js/PaginationSwitcher.js` fetches to flip pages client-side.
 
+## Client-side widgets — scripts and data attributes
+
+Page scripts are plain files in `js/`, listed **explicitly** in
+`display/layout/header.h.tt` (a `<script src="/js/...">` tag) and in the
+`resources[]` array of `nob.c`'s `build_bundle()` — the bundle is a fixed
+list, not a glob, so a new script needs both lines or it never ships.
+Widgets attach to markup through `data-*` hooks, never through generated
+ids, so the same script wires every page:
+
+| Script | Hook | What it does |
+|---|---|---|
+| `js/ImageUpload.js` | `[data-img-upload]` wrapper around a `type=file` input | img-icon chooser button, live circular preview (w-10 h-10 in master-child), canvas compression under the server's 2 MB upload cap (`MAX_UPLOAD_IMAGE_SIZE`), and a drag/zoom crop modal whose Apply writes a 512×512 file back into the input via `DataTransfer`. Used in `display/user*.h.tt` and across `master_child` for `COL_TYPE_IMG` and avatar composite cells on part 0. Previews existing photo on edit rows; re-arms on `md:swapped`. |
+The crop/modal DOM is built by the script (not the template) so the two
+templates carrying the field (`display/user.h.tt`, `display/user_edit.h.tt`)
+hold only the wrapper markup. Tailwind v4 auto-scans `js/`, so classes in
+script strings need no `@source` entry.
+
 ## When to template vs inline — the design rule
 
 Not every line of markup earns a `.tt` file. The rule:

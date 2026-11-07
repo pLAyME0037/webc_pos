@@ -18,8 +18,9 @@ vanilla JS only.
   (dialect pin), WEBC_TLS_CERT/WEBC_TLS_KEY (both or nothing).
 - Tests: ./test/run.sh (builds; throwaway HOME+WEBC_DB under /tmp; never
   touches real DB). SKIP_BUILD=1 to reuse build. Suites: http_test.py (sqlite),
-  mysql_test.py (own mariadbd), https_test.py. Baseline before POS work:
-  **140 passing (94 + 40 + 6)**.
+  crud_contract_test.py, geo_cascade_test.py + img_upload_test.py (real
+  chromium; skip without it), mysql_test.py (own mariadbd), https_test.py.
+  Baseline before POS work: **140 passing (94 + 40 + 6)**.
 - Real DB ~/sqlite3/webc_c/db — NEVER write to it from tests/tools.
 
 ## Directory map
@@ -52,8 +53,10 @@ vanilla JS only.
   vs inline HTML: templates.md "When to template vs inline".
 - js/ — ListExpandSwitcher.js (smart master_child: snapshot->fetch->swap->
   reveal), PaginationSwitcher.js (fragment-store paging), sidebarSwitcher,
-  themeSwitcher. Bundled via root nob.c resources[].
-- test/ — run.sh, http_test.py, mysql_test.py, https_test.py, testlib.py
+  themeSwitcher, ImageUpload.js (photo preview/crop/compress, wired by the
+  [data-img-upload] wrapper). Bundled via root nob.c resources[].
+- test/ — run.sh, http_test.py, crud_contract_test.py, geo_cascade_test.py,
+  img_upload_test.py, mysql_test.py, https_test.py, testlib.py
   (Client, Checker, db_query = scalar, db_exec), golden/ byte-exact pins.
 - migrations/000N_name/{sqlite3,mysql,postgres}.sql — per-dialect, applied in
   ONE transaction => NO PRAGMAs inside files (connection PRAGMAs run in
@@ -93,8 +96,7 @@ vanilla JS only.
 
 ## master_child engine (key facts)
 - MD_MasterConfig{table,title,id_column,crud_path,columns,sum,children[]};
-  MD_Column{name,label,type,nullable,fk_*,hidden,computed}.
-- SELECT list = id_column + each columns[].name; slots = values[0]=id,
+  MD_Column{name,label,type (TEXT/NUM/DATE/TEXTAREA/FK_SELECT/COL_TYPE_IMG),nullable,fk_*,hidden,computed}.SELECT list = id_column + each columns[].name; slots = values[0]=id,
   values[i+1] per column (this is the indexing the multi-field-cell phase
   replaces with a slot map).
 - Master: SQL window (LIMIT/OFFSET) + count(*); children loaded fully and
