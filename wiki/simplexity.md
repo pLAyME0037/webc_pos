@@ -25,7 +25,9 @@ makes the real problems harder to see.
 
 2. **No framework a human did not write.** webc vendors three single-file
    libraries — `nob` (build), the SQLite amalgamation, and a coroutine
-   scheduler — and calls two system libraries, OpenSSL and libmariadb. It does
+   scheduler — and calls two system libraries, OpenSSL and libmariadb, both
+   **optional**: the build gateway drops each one (and the feature behind it)
+   when the host lacks it instead of failing the build. It does
    not build a router DSL, an ORM, a dependency injector, or a plugin system
    ahead of needing one. The router is an array of 20 structs.
 

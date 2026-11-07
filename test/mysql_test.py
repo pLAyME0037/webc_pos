@@ -277,6 +277,15 @@ def run_checks(t, c, env):
 
 
 def main():
+    # nob.c feature gateway: skip when webc was built without libmariadb
+    # (the binary can't open a mysql: DSN at all in that build).
+    try:
+        with open(os.path.join(PROJECT, "build", "webc_features.h")) as f:
+            if "#define WEBC_HAVE_MARIADB 0" in f.read():
+                print("SKIP mysql_test: webc built without libmariadb")
+                return 0
+    except OSError:
+        pass
     if not (shutil.which("mariadbd") and shutil.which("mariadb-install-db")
             and shutil.which("mariadb")):
         print("SKIP mysql_test: mariadb tooling not installed")

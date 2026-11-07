@@ -89,6 +89,15 @@ def plain_http_probe(port):
 
 
 def main():
+    # nob.c feature gateway: skip when webc was built without openssl
+    # (no TLS in the binary - WEBC_TLS_CERT would just refuse to start).
+    try:
+        with open(os.path.join(PROJECT, "build", "webc_features.h")) as f:
+            if "#define WEBC_HAVE_OPENSSL 0" in f.read():
+                print("SKIP https_test: webc built without openssl")
+                return 0
+    except OSError:
+        pass
     if not shutil.which("openssl"):
         print("SKIP https_test: openssl CLI not installed")
         return 0

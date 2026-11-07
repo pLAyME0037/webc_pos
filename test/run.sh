@@ -37,14 +37,27 @@ trap cleanup EXIT
 SERVER_PID=$!
 
 rc=0
+# Feature gateway (build/webc_features.h, written by nob.c): suites whose feature
+# was compiled out are skipped, not failed - a host without libmariadb or
+# OpenSSL still gets a green sqlite run.
+MYSQL_PID=""
+HTTPS_PID=""
 MYSQL_LOG="$TMP/mysql_test.log"
 HTTPS_LOG="$TMP/https_test.log"
 # Dialect + TLS suites run alongside the sqlite suite (own mariadbd / cert /
 # server each); their state lives under $TMP so the cleanup trap removes it.
-python3 test/mysql_test.py "$TMP" > "$MYSQL_LOG" 2>&1 &
-MYSQL_PID=$!
-python3 test/https_test.py "$TMP" > "$HTTPS_LOG" 2>&1 &
-HTTPS_PID=$!
+if grep -q '#define WEBC_HAVE_MARIADB 0' build/webc_features.h 2>/dev/null; then
+    echo "SKIP: mysql_test (webc built without libmariadb)"
+else
+    python3 test/mysql_test.py "$TMP" > "$MYSQL_LOG" 2>&1 &
+    MYSQL_PID=$!
+fi
+if grep -q '#define WEBC_HAVE_OPENSSL 0' build/webc_features.h 2>/dev/null; then
+    echo "SKIP: https_test (webc built without openssl)"
+else
+    python3 test/https_test.py "$TMP" > "$HTTPS_LOG" 2>&1 &
+    HTTPS_PID=$!
+fi
 
 python3 test/http_test.py "$HOST" "$PORT" "$TMP" || rc=$?
 # Phase 2: composite-column pages share this server + DB (needs http_test's
@@ -68,14 +81,14 @@ python3 test/crud_contract_test.py "$HOST" "$PORT" "$TMP" || rc=$?
 # the contract suite so its staff row cannot shift any earlier count.
 python3 test/geo_cascade_test.py "$HOST" "$PORT" "$TMP" || rc=$?
 
-if ! wait "$MYSQL_PID"; then
+if [ -n "$MYSQL_PID" ] && ! wait "$MYSQL_PID"; then
     rc=1
 fi
-if ! wait "$HTTPS_PID"; then
+if [ -n "$HTTPS_PID" ] && ! wait "$HTTPS_PID"; then
     rc=1
 fi
-cat "$MYSQL_LOG"
-cat "$HTTPS_LOG"
+[ -f "$MYSQL_LOG" ] && cat "$MYSQL_LOG"
+[ -f "$HTTPS_LOG" ] && cat "$HTTPS_LOG"
 
 if [ "$rc" -ne 0 ]; then
     echo "--- server.log (tail) ---"

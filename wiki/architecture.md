@@ -170,7 +170,7 @@ PAGE_END(sc);                        // render_page_footer()
 | `src/db/db.c` | dialect selection, migration history, backup/restore |
 | `src/db/sql.h` + `src/db/sql.c` | dialect-neutral statement API |
 | `src/db/driver_sqlite.c` | SQLite (bundled amalgamation) |
-| `src/db/driver_mysql.c` | MySQL/MariaDB via libmariadb |
+| `src/db/driver_mysql.c` | MySQL/MariaDB via libmariadb (optional - stub when built without it) |
 | `src/db/driver_postgres.c` | **stub** — fails with a clear message |
 | `src/layout/header.c`, `footer.c` | page chrome (shell HTML) |
 | `src/layout/paging.c` | windowed pagination maths |
@@ -215,12 +215,27 @@ images and the four JS files.
 ## Build pipeline — `nob.c`
 
 ```
+pkg-config --exists libmariadb, openssl   (feature gateway, step 0)
+   └─▶ build/webc_features.h              (WEBC_HAVE_* 1/0, write-if-changed)
 build/bin/tt          (compile src/tt.c)
    └─ display/*.tt  ──▶  build/h_to_html/**.h
 tailwindcss-linux-x64 css/input.css ──▶ css/output.css
 build_bundle()        css/js/images ──▶ build/bundle.h
 cc  src/**.c  + build/sqlite3.o + build/coroutine.o ──▶ build/bin/webc
 ```
+
+**Feature gateway (step 0).** OpenSSL (TLS + password hashing) and libmariadb
+(MySQL dialect) are optional: `nob.c` probes them with `pkg-config --exists`
+before any staleness work. Missing → a warning and webc is built *without*
+that feature, never a failed compile. The result is `build/webc_features.h`,
+which the guarded files (`serve.c`, `auth.c`, `driver_mysql.c`) `#include` -
+so a dependency appearing or disappearing rebuilds exactly those objects and
+relinks, while an untouched tree stays on the fast path. Absent openssl:
+TLS compiled out (requesting `WEBC_TLS_*` refuses to start) and a built-in
+SHA-256 backs password hashing. Absent libmariadb: `driver_mysql.c` compiles
+a stub whose `mysql:` open fails with a clear message. The file is named
+`webc_features.h`, not `features.h`, because glibc's own `<features.h>` is
+included by every system header and `-I./build` would hijack it.
 
 The `cc` step **globs every `.c` under `src/`** (excluding `tt.c` and
 `nob.c`). Consequences:

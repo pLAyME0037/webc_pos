@@ -48,8 +48,8 @@ SKIP_BUILD=1 ./test/run.sh # reuse the current build/bin/webc
 python3 test/mysql_test.py "$TMP"  > "$TMP/mysql_test.log"  2>&1 &   # background
 python3 test/https_test.py "$TMP"  > "$TMP/https_test.log"  2>&1 &   # background
 python3 test/http_test.py "$HOST" "$PORT" "$TMP"                     # foreground
-wait "$MYSQL_PID"; wait "$HTTPS_PID"
-cat "$TMP/mysql_test.log" "$TMP/https_test.log"
+[ -n "$MYSQL_PID" ] && wait "$MYSQL_PID"; [ -n "$HTTPS_PID" ] && wait "$HTTPS_PID"
+cat "$TMP/mysql_test.log" "$TMP/https_test.log"   # only when the suite ran
 ```
 
 The SQLite suite runs against the shared server on the foreground; the dialect
@@ -65,13 +65,15 @@ finish. You get every failure in one run rather than one at a time.
 | Suite | Server | Backend | Skips when |
 |---|---|---|---|
 | `http_test.py` | shared (`$HOST:$PORT`) | SQLite (`$WEBC_DB`) | never |
-| `mysql_test.py` | own | throwaway `mariadbd` | MariaDB tooling missing |
-| `https_test.py` | own, TLS | own throwaway SQLite DB | `openssl` CLI missing |
+| `mysql_test.py` | own | throwaway `mariadbd` | webc built without libmariadb, or MariaDB tooling missing |
+| `https_test.py` | own, TLS | own throwaway SQLite DB | webc built without openssl, or `openssl` CLI missing |
 
-**Skip = exit 0 with a printed reason.** A missing optional tool is not a
-failure, so the suite stays green on a machine without MariaDB or OpenSSL —
-but it also means **a green run does not prove those suites ran**. Check the
-logs if coverage matters.
+**Skip = exit 0 with a printed reason.** A missing optional tool — or an
+optional dependency that was absent on the *build* host (nob.c's feature
+gateway records it in `build/webc_features.h`, which `run.sh` and both suite
+entry points read) — is not a failure, so the suite stays green on a machine
+without MariaDB or OpenSSL — but it also means **a green run does not prove
+those suites ran**. Check the logs if coverage matters.
 
 ### `http_test.py` — main suite
 

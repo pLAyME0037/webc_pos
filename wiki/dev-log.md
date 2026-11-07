@@ -1060,3 +1060,68 @@ lazy pool, one-server rule, `PIPES_AS_CONCAT`, 0004 seed), `cli.md`
 startup steps), `testing.md` (no implicit default), `WIKI.md`
 (comment-only claims for 0004 now false), `simplexity.md` (`db_pool_put`
 removed from the ownership list).
+
+---
+
+## 2026-11-07 — optional features: build webc without openssl / libmariadb
+
+### What is beginning implementation
+
+Build-time **feature gateway** in `nob.c`: before compiling, check the host
+for the optional dependencies with `pkg-config --exists` (libmariadb,
+openssl). Found → compile + link them as today. Not found → **warn and build
+webc without that feature**, instead of failing on a missing header.
+
+| Feature | Absent → | How the binary degrades |
+|---|---|---|
+| `openssl` | `WEBC_HAVE_OPENSSL 0` | TLS compiled out of `serve.c`: plaintext HTTP only; `tls_server_init()` errors out if `WEBC_TLS_CERT`/`WEBC_TLS_KEY` are set (the "never serve plaintext when TLS was requested" rule stays). **`auth.c` also uses OpenSSL** - EVP sha256 is the password hash, not just TLS - so an `#else` fallback SHA-256 (FIPS 180-4, ~60 lines) keeps logins working; same digest, proven by the seeded-hash login test |
+| `libmariadb` | `WEBC_HAVE_MARIADB 0` | `driver_mysql.c` compiles a stub vtable in place of the real driver (same shape as the postgres stub): `mysql:` DSNs open with "mysql support not compiled in (libmariadb missing at build time)". Migrations/queries never reached |
+| postgres | (already a stub) | unchanged |
+
+Mechanics:
+
+- `nob.c` writes `build/features.h` (later renamed `webc_features.h` - see
+  the trap in Results; `#define WEBC_HAVE_* 1/0`,
+  write-if-changed) **before** the staleness pass - the guarded files
+  `#include "build/features.h"`, so flipping a dependency rebuilds exactly
+  those translation units and relinks; an untouched tree stays on the fast
+  path.
+- pkg-config flag/lib collection stays where it is, but only appends when
+  the package exists (warnings move to the gateway, once).
+- `test/run.sh` greps `build/features.h` and skips `mysql_test` /
+  `https_test` when the feature is off (guarded waits + log cats); both
+  python files also self-skip when run by hand. sqlite suites always run.
+- Verification plan: rebuild normally (both features on, suite at the
+  21-failure baseline), then simulate a bare host with
+  `PKG_CONFIG_LIBDIR=/nonexistent` → feature-less binary → suite again
+  (sqlite suites must pass, mysql/https skipped), then rebuild normally.
+
+### What works / does not work yet
+
+| | |
+|---|---|
+| works now | everything, both deps present on this host (unchanged behaviour) |
+| not yet | the gateway itself, the guards, the fallback SHA-256, the test skips - none of it exists yet |
+| affected docs | `wiki/architecture.md` (build step), `wiki/database.md` (driver table + MySQL idioms), `wiki/cli.md` (`WEBC_TLS_*` row, known gaps), `wiki/testing.md` (suite skips), `wiki/decisions.md` if a rule gets written |
+| risk notes | fallback SHA-256 must be byte-identical to EVP's (verified against `hash("abc")` vector + the seeded `webc2026` login); `build/features.h` must be on the include path (`-I.`); a features flip must not drag every object into a rebuild (only guarded files) |
+
+### Results (2026-11-07, optional features)
+
+| | Shipped | Evidence |
+|---|---|---|
+| gateway | `nob.c` step 0 probes `pkg-config --exists libmariadb` / `openssl` and writes `build/webc_features.h` (`WEBC_HAVE_* 1/0`, write-if-changed) before the staleness pass. Missing dep => one `WARNING` per build and the feature is compiled out - never a failed compile. Flag collection at the compile/link step is silent now (gateway reported once) | bare-host simulation `PKG_CONFIG_LIBDIR=/nonexistent ./build/bin/nob`: 2 warnings, `webc_features.h: updated` (0/0), **5 of 54 objects** recompiled (only the guarded ones), relink clean |
+| openssl off | `serve.c`: TLS block, `Conn.ssl` field, read/write SSL branches, handshake and cleanup all `#if WEBC_HAVE_OPENSSL`; without it `tls_ctx` stays NULL (banner says `http`) and `tls_server_init()` **refuses to start** when `WEBC_TLS_*` is set - never a silent plaintext downgrade. `auth.c`: EVP is not just TLS, it is the password hash, so an `#else` built-in SHA-256 (FIPS 180-4, verified byte-identical: `sha256("abc")`, `sha256("webc2026" \|\| "posadmin1") = 21a55faf...` vs hashlib) keeps logins working | OFF build: `nm` shows `sha256_block` in, `EVP_*` out, no `SSL_*`; full suite **21 fails = baseline** with both suite skips; seeded-hash staff logins pass on the fallback hash |
+| libmariadb off | `driver_mysql.c` compiles a stub vtable in place of the wire protocol (same shape as postgres): open fails with "mysql support not compiled in (libmariadb was missing at build time)" | OFF build: `nm` shows `my_stub_open`; `mysql_test` skipped, sqlite suites at baseline |
+| tests | `run.sh` greps `build/webc_features.h` and skips `mysql_test`/`https_test` (guarded waits + log cats, `MYSQL_PID`/`HTTPS_PID` start empty); both python files self-skip too when run by hand | OFF run prints `SKIP: mysql_test (webc built without libmariadb)` + `SKIP: https_test (webc built without openssl)` as lines 1-2, exit matches baseline |
+| restored | `./build/bin/nob` with deps present: features back to 1/1, fallback/stub/TLS-out all compiled away, ON suite at **21 fails = baseline** (http 119/1, pos 372/17, shop 118/0, role 48/0, crud 157/3, geo 32/0, mysql 41/0, https 6/0) | both modes green, no regression |
+
+**Trap found the hard way:** the header cannot be called `features.h` -
+`-I./build` makes glibc's `#include <features.h>` (pulled by every system
+header) resolve to the generated file and the compile dies in `assert.h`
+with `missing binary operator before token '('`. Renamed to
+`build/webc_features.h`; recorded in architecture.md.
+
+**Note:** builds were observed flipping the feature header mid-test -
+cause was a concurrent `nob` run from the user's own terminal, not the
+gateway; both suite runs had already latched the right binary (SKIP lines
+printed from the 0/0 header, server spawned before the flip).

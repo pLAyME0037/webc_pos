@@ -106,7 +106,7 @@ branches on dialect for reads. Dialect differences are confined to:
 | Driver | Lines | Notes |
 |---|---|---|
 | `driver_sqlite.c` | 172 | bundled, `third_party/sqlite-amalgamation-3460100` |
-| `driver_mysql.c` | 481 | libmariadb, found via `pkg-config` at build time |
+| `driver_mysql.c` | 481 | libmariadb, found via `pkg-config` at build time; **optional** - built as a stub when the host lacks libmariadb (see the feature gateway in [architecture.md](architecture.md)) |
 | `driver_postgres.c` | 101 | stub |
 
 ### MySQL porting idioms
@@ -121,6 +121,10 @@ branches on dialect for reads. Dialect differences are confined to:
 - The naive `;` splitter in `driver_mysql.c` has one contract: **no `;`
   inside comments or string literals** — a `;` in a comment splits the
   statement in half.
+- The dialect is **optional at build time**: `nob.c`'s feature gateway
+  compiles `driver_mysql.c` as a stub when the host has no libmariadb, and a
+  `mysql:` DSN then fails at `db_open()` with "mysql support not compiled
+  in" (the same shape as the postgres stub). Nothing else in webc changes.
 - `0004_seed_pos/mysql.sql` carries the real seed data: missing test coverage
   must not strip data from a dialect. Its Postgres twin stays comment-only
   (stub driver).

@@ -2,6 +2,14 @@
 // sql_*; dialect differences live in the q[] tables at call sites and in the
 // naive `;` split of exec_script() below (migration files are written to be
 // split-safe: no semicolons inside comments or strings).
+//
+// OPTIONAL: nob.c's feature gateway probes for libmariadb before compiling.
+// Without it this file compiles the stub below instead of the wire
+// protocol - a mysql: DSN then refuses to open with a clear message (same
+// shape as the postgres stub), and the rest of webc still serves.
+#include "build/webc_features.h"
+
+#if WEBC_HAVE_MARIADB
 #include <stdlib.h>
 #include <string.h>
 
@@ -488,3 +496,83 @@ const Sql_Driver drv_mysql = {
     .txn_rollback = mysql_drv_txn_rollback,
     .errmsg       = mysql_drv_errmsg,
 };
+#else  // !WEBC_HAVE_MARIADB - built on a host without libmariadb
+#include <stdio.h>
+
+#include "sql.h"
+
+static bool my_stub_open(db_t *db, const char *dsn) {
+    (void) dsn;
+    if (db) {
+        snprintf(db->err, sizeof(db->err),
+                 "mysql support not compiled in (libmariadb was missing "
+                 "at build time)");
+    }
+    return false;
+}
+
+static void my_stub_close(db_t *db) { (void) db; }
+
+static bool my_stub_prepare(db_t *db, const char *query, sql_stmt *out) {
+    (void) db; (void) query; (void) out;
+    return false;
+}
+
+static Sql_Step my_stub_step(sql_stmt *stmt) {
+    (void) stmt;
+    return SQL_ERROR;
+}
+
+static void my_stub_finalize(sql_stmt *stmt) { (void) stmt; }
+
+static const char *my_stub_column_text(sql_stmt *stmt, int column) {
+    (void) stmt; (void) column;
+    return NULL;
+}
+
+static long long my_stub_column_int64(sql_stmt *stmt, int column) {
+    (void) stmt; (void) column;
+    return 0;
+}
+
+static int my_stub_column_count(sql_stmt *stmt) {
+    (void) stmt;
+    return 0;
+}
+
+static bool my_stub_bind(sql_stmt *stmt, int index, sql_val value) {
+    (void) stmt; (void) index; (void) value;
+    return false;
+}
+
+static bool my_stub_exec_script(db_t *db, const char *script) {
+    (void) db; (void) script;
+    return false;
+}
+
+static bool my_stub_txn_begin(db_t *db) { (void) db; return false; }
+static bool my_stub_txn_commit(db_t *db) { (void) db; return false; }
+static bool my_stub_txn_rollback(db_t *db) { (void) db; return false; }
+
+static const char *my_stub_errmsg(db_t *db) {
+    if (db && db->err[0]) return db->err;
+    return "mysql support not compiled in (libmariadb was missing at build time)";
+}
+
+const Sql_Driver drv_mysql = {
+    .open         = my_stub_open,
+    .close        = my_stub_close,
+    .prepare      = my_stub_prepare,
+    .step         = my_stub_step,
+    .finalize     = my_stub_finalize,
+    .column_text  = my_stub_column_text,
+    .column_int64 = my_stub_column_int64,
+    .column_count = my_stub_column_count,
+    .bind         = my_stub_bind,
+    .exec_script  = my_stub_exec_script,
+    .txn_begin    = my_stub_txn_begin,
+    .txn_commit   = my_stub_txn_commit,
+    .txn_rollback = my_stub_txn_rollback,
+    .errmsg       = my_stub_errmsg,
+};
+#endif // WEBC_HAVE_MARIADB
