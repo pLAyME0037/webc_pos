@@ -47,13 +47,11 @@
  * Dialect = the DSN prefix (`mysql:` / `postgres:`, else sqlite), or the
  * WEBC_DEFAULT_SQL env pin. Tests set WEBC_DB, so they win over this. */
 static const char *WEBC_DEFAULT_DSN = "~/sqlite3/webc_c/db";
-// WEBC_DEFAULT_DSN = "mysql:user=root;"
-//                          "password=;"
-//                          "database=webc_pos;"
-//                          "socket=/run/mysqld/mysqld.sock";
-
-// #define HOME (getenv(HOME))
-// WEBC_DEFAULT_DSN = "HOME/sqlite3/webc_c/db";
+// Alternative (uncomment, comment the line above):
+// static const char *WEBC_DEFAULT_DSN = "mysql:user=root;"
+//                                       "password=;"
+//                                       "database=webc_pos;"
+//                                       "socket=/run/mysqld/mysqld.sock";
 
 typedef struct Command {
     const char *name;
@@ -374,6 +372,12 @@ int main(int argc, char **argv) {
     const char *dsn = (webc_db && webc_db[0])     ? webc_db
                     : (webc_conn && webc_conn[0]) ? webc_conn
                                                   : WEBC_DEFAULT_DSN;
+    // A leading "~/" (or a bare "~") expands to $HOME: the DSN never passes
+    // through a shell, so nothing else will. HOME unset leaves it literal.
+    if (dsn && dsn[0] == '~' && (dsn[1] == '/' || dsn[1] == '\0')) {
+        const char *home = getenv("HOME");
+        if (home && home[0]) dsn = temp_sprintf("%s%s", home, dsn + 1);
+    }
     db_cfg.dsn = (dsn && dsn[0]) ? strdup(dsn) : NULL;
     db_cfg.dir = NULL;
     if (db_cfg.dsn) {

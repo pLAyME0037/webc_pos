@@ -306,8 +306,10 @@ vanilla JS only.
   items-first since FKs are off during migrations), 84 lines, 42
   payments (every 4th half-paid, every 7th PENDING), 14 deliveries,
   42 credits w/ running-balance window + 6 expenses, 4 alerts, 4
-  audit rows. mysql.sql/postgres.sql = documented comment-only skips
-  (fragment_has_stmt() skips comment-only fragments - verified).
+  audit rows. postgres.sql = documented comment-only skip
+  (fragment_has_stmt() skips comment-only fragments - verified);
+  mysql.sql = real MySQL port since 2026-11-06 (INSERT IGNORE,
+  DATE_SUB/UTC_TIMESTAMP, LPAD, PIPES_AS_CONCAT).
 - ALL seed created_at sit in the PAST (-300..-1 days): demo pages sort
   newest-first, so test/demo rows must keep page 1 of per_page=20.
 - Master order flipped id DESC -> created_at DESC in
@@ -429,7 +431,7 @@ vanilla JS only.
 - Migration 0006_i18n: sqlite INSERT OR IGNORE of 70 keys x lang_km+
   lang_en (km values extracted from the C fallbacks so DB and literal are
   byte-identical), mysql/postgres = comment-only skip (no semicolons in
-  comments; precedent 0004), registered in db.c -> history rows 5->6.
+  comments - the splitter contract), registered in db.c -> history rows 5->6.
   New keys/languages still via /pos/i18n CRUD.
 - Tests: shop_test +29 (Phase 12 section: lang="km", theme script + 3
   buttons x2 controllers, lang form/options/selected, Khmer placeholder,

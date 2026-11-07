@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 0004_seed_pos -- seeded for MySQL too (ported from sqlite3.sql 2026-11-06).
 -- The old header claimed this file was skipped because pos_test is
--- sqlite-only; missing test coverage must not strip data from a dialect.
+-- sqlite-only. Missing test coverage must not strip data from a dialect.
 -- MySQL idioms used here: INSERT IGNORE, DATE_SUB/UTC_TIMESTAMP,
 -- LPAD, WITH RECURSIVE (MariaDB), and `||` as concatenation - the mysql
 -- driver sets sql_mode PIPES_AS_CONCAT on every connection.
@@ -76,7 +76,7 @@ SELECT 'sd-var-' || LPAD(n, 3, '0'),
 FROM seq;
 
 -- ---------------------------------------------------------------------------
--- 5. Stock for every product; the first six sit at/below their min so the
+-- 5. Stock for every product. The first six sit at/below their min so the
 --    low-stock report has rows (quantity <= min_threshold).
 -- ---------------------------------------------------------------------------
 INSERT IGNORE INTO inventory_stocks (id, org_unit_id, product_id, variant_id,
@@ -203,12 +203,11 @@ SELECT 'sd-item-' || LPAD(o.n, 3, '0') || '-' || k.i,
        0.0,
        ROUND(p.base_price * (((o.n + k.i) % 4) + 1), 2),
        DATE_ADD(DATE_SUB(UTC_TIMESTAMP(), INTERVAL (((42 - o.n) DIV 3)) DAY), INTERVAL (((o.n % 9) + 8)) HOUR)
-FROM o, k
-JOIN products p
-  ON p.id = 'sd-prod-' || LPAD(((o.n * 3 + k.i * 7) % 50) + 1, 3, '0');
+FROM o, k, products p
+WHERE p.id = 'sd-prod-' || LPAD(((o.n * 3 + k.i * 7) % 50) + 1, 3, '0');
 
 -- ---------------------------------------------------------------------------
--- 12. Orders across the last 14 days; subtotal/total = sum of the lines
+-- 12. Orders across the last 14 days. subtotal/total = sum of the lines
 --     (+ delivery fee every third order).
 -- ---------------------------------------------------------------------------
 INSERT IGNORE INTO orders (id, org_unit_id, shift_id, customer_id, staff_id,
@@ -248,7 +247,7 @@ SELECT 'sd-ord-' || LPAD(k, 3, '0'),
 FROM n;
 
 -- ---------------------------------------------------------------------------
--- 13. Payments: one per order; every 4th pays half (total_paid < total),
+-- 13. Payments. one per order, every 4th pays half (total_paid < total),
 --     every 7th still PENDING (excluded from the report's paid sum).
 -- ---------------------------------------------------------------------------
 INSERT IGNORE INTO payments (id, order_id, payment_method_dict_id, amount,

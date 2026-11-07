@@ -875,7 +875,8 @@ static bool pool_grow(void) {
     db_pool[db_pool_count].db = db;
     db_pool[db_pool_count].in_use = false;
     db_pool_count++;
-    if (db_pool_count == 1) printf("DB pool: first connection open (lazy)\n");
+    if (db_pool_count == 1)
+        nob_log(NOB_INFO, "DB pool: first connection open (lazy)");
     return true;
 }
 

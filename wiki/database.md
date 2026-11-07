@@ -14,7 +14,7 @@ no config file:
 | `WEBC_DB` | full DSN or file path (tests, alternate instances) | wins for the location |
 | `WEBC_CONNECTION_STRING` | raw DSN, read only when `WEBC_DB` is unset | fallback |
 | `WEBC_DEFAULT_DSN` | **compiled-in** constant above `main()` in `src/webc.c` — edit it and rebuild to point the binary somewhere else permanently (e.g. the `mysql:` DSN) | fallback to env |
-| *(none)* | `~/sqlite3/webc_c/db` | default |
+| *(none)* | nothing — **no connection is ever attempted**, DB routes answer "no database configured" | no default |
 
 `webc_db_lang()` (`src/db/db.c:599`) picks the dialect in three steps:
 
@@ -28,7 +28,8 @@ the driver never sees the selector.
 
 | `WEBC_DB` | Dialect | Driver |
 |---|---|---|
-| unset → `~/sqlite3/webc_c/db` | SQLite | bundled amalgamation (3.46.1) |
+| unset, `WEBC_DEFAULT_DSN` also empty | — | no connection attempted |
+| unset, `WEBC_DEFAULT_DSN` set (e.g. `~/sqlite3/webc_c/db`) | SQLite | bundled amalgamation (3.46.1); leading `~/` expands to `$HOME` |
 | `/tmp/x.db` | SQLite | bundled amalgamation |
 | `mysql:user=root;password=;database=webc;socket=/run/mysqld/mysqld.sock` | MySQL/MariaDB | libmariadb |
 | `postgres:...` | PostgreSQL | **stub — fails with a clear message** |
@@ -51,10 +52,16 @@ the handle and must `db_close()` it. Schema verification is cached per
 `(dialect, DSN)` pair, so opening the same second database twice does not
 re-read the migration history.
 
-### Why SQLite is the default
+**The design is one server per process.** This API is opt-in and no
+production code calls it — nothing in `webc` opens a second SQL server by
+design; every pool slot opens the same primary DSN.
+
+### Why SQLite is the default dialect
 
 It needs no server, no credentials and no daemon, so a clone builds and runs
-with nothing configured. Everything else is opt-in through one variable.
+against a file with no server setup. Everything else is opt-in through one
+variable — and if nothing is configured at all, no connection is attempted
+rather than guessing a path.
 
 ### Postgres: honest stub
 
@@ -102,18 +109,34 @@ branches on dialect for reads. Dialect differences are confined to:
 | `driver_mysql.c` | 481 | libmariadb, found via `pkg-config` at build time |
 | `driver_postgres.c` | 101 | stub |
 
+### MySQL porting idioms
+
+- `mysql_drv_open()` sets `sql_mode PIPES_AS_CONCAT` once per connection, so
+  `a || b` concatenates like in the SQLite dialect (verified: no
+  mysql-dialect SQL uses `||` as logical OR). Seed files stay line-for-line
+  ports: `INSERT IGNORE`, `DATE_SUB(UTC_TIMESTAMP(), INTERVAL n DAY)` for
+  `strftime`, `LPAD` for `printf`, and comma-joins where MySQL's JOIN
+  precedence would reject `FROM a, b JOIN c ON ... a.x` (the `ON` cannot see
+  `a`).
+- The naive `;` splitter in `driver_mysql.c` has one contract: **no `;`
+  inside comments or string literals** — a `;` in a comment splits the
+  statement in half.
+- `0004_seed_pos/mysql.sql` carries the real seed data: missing test coverage
+  must not strip data from a dialect. Its Postgres twin stays comment-only
+  (stub driver).
+
 ## The pool
 
 ```c
 #define DB_POOL_SIZE 8          // src/db/db.h
 db_t *open_webc_db(void);       // checkout from the pool (or a transient)
 void  db_close(db_t *db);       // pooled -> release, otherwise destroy
-void  db_pool_init(void);       // opens all 8 up front, prints the count
 ```
 
-`db_pool_init()` runs inside `coroutine_server_run()` before `listen()`, so a
-bad DSN fails at startup rather than on the first request. It is idempotent,
-and `db_pool_get()` will initialise it if called first.
+The pool is **lazy**: nothing connects at startup (`serve.c` does not warm
+it), so serving static files or a refused DSN never costs a connection. The
+first checkout opens connection 1; later checkouts grow toward
+`DB_POOL_SIZE` only while every slot is genuinely busy.
 
 `db_pool_get()` is a real **checkout**: it scans for the next slot whose
 `in_use` flag is clear, marks it taken, and `db_close()` hands it back
@@ -124,13 +147,14 @@ them.
 
 Two safety valves:
 
-- **Pool exhausted** (all 8 checked out): `db_pool_get()` opens a transient
-  connection instead of returning `NULL`, so concurrency costs a connection,
-  not a 500.
-- **Init failure latches**: a bad DSN or a refused schema marks the pool dead
-  for the process. `db_pool_get()` then returns `NULL` immediately with one
-  log line — no per-request retry storm re-running the 2.4 MB history check.
-  Callers already treat `NULL` as "serve 500".
+- **Pool exhausted** (all slots checked out): `db_pool_get()` grows the pool
+  if it can, and otherwise opens a transient connection instead of returning
+  `NULL`, so concurrency costs a connection, not a 500. A failed *grow* never
+  latches — only the first-ever open does.
+- **First open failure latches**: a bad DSN or a refused schema marks the pool
+  dead for the process. `db_pool_get()` then returns `NULL` immediately with
+  one log line — no per-request retry storm re-running the 2.4 MB history
+  check. Callers already treat `NULL` as "serve 500".
 
 Schema verification itself runs **once per process per `(dialect, DSN)`**
 (`verified_items` in `db.c`); every later open of the same database just gets

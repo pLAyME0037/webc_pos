@@ -14,7 +14,7 @@ How a request becomes bytes, and which file owns each step.
                      ┌────────── src/http/serve.c ──────────┐
                      │ coroutine_init()                     │
                      │ tls_server_init()   ← abort if bad   │
-                     │ db_pool_init()      ← 8 connections  │
+                     │ pool is lazy - opens on first request │
                      │ socket/bind/listen(80), non-blocking │
                      └──────────────────┬───────────────────┘
                                         │ accept()
@@ -57,19 +57,17 @@ How a request becomes bytes, and which file owns each step.
 
 ## Startup — `src/webc.c`
 
-`main()` does four things and then gets out of the way:
+`main()` does three things and then gets out of the way:
 
-1. Requires `$HOME` — exits 1 with a message naming `~/sqlite3/webc_c/` if
-   unset.
-2. Resolves the database environment, in precedence order:
-   `WEBC_DEFAULT_SQL` (dialect pin) is read into the global first, then the
-   location: `WEBC_DB` > `WEBC_CONNECTION_STRING` > the compiled-in
-   `WEBC_DEFAULT_DSN` constant in `webc.c` > `~/sqlite3/webc_c/db`.
-   From the chosen string it derives `WEBC_DB_PATH` (the DSN, prefix intact)
-   and `WEBC_DIR_PATH` (the parent directory for a SQLite file path; `.` for
-   `mysql:`/`postgres:` DSNs, which are not file paths).
-3. Reads `WEBC_TRACE_MIGRATION_QUERIES`.
-4. Dispatches the CLI verb, defaulting to `help`.
+1. Resolves the database once into the set-once `Db_Cfg` struct, in
+   precedence order: `WEBC_DEFAULT_SQL` (dialect pin) first, then the
+   location `WEBC_DB` > `WEBC_CONNECTION_STRING` > the compiled-in
+   `WEBC_DEFAULT_DSN` constant in `webc.c` > nothing (no connection is ever
+   attempted). A leading `~/` in any DSN expands to `$HOME`. From the chosen
+   string it derives `dir` (the parent directory for a SQLite file path; `.`
+   for `mysql:`/`postgres:` DSNs, which are not file paths).
+2. Reads `WEBC_TRACE_MIGRATION_QUERIES`.
+3. Dispatches the CLI verb, defaulting to `help`.
 
 `serve` calls `coroutine_server_run()` directly. `dev` is a separate loop: it
 hashes mtimes over a set of source roots every second, and when the hash moves

@@ -6,9 +6,11 @@ How the app runs against a database nobody cares about.
 
 > **No test can touch a real database.**
 
-`test/run.sh` exports a throwaway `HOME` before anything starts, so the
-default `~/sqlite3/webc_c/db` is never opened. If a test ever reaches your real
-data, the harness is broken — treat that as a bug in the harness first.
+`test/run.sh` exports a throwaway `HOME` before anything starts and every
+test sets `WEBC_DB` explicitly, which wins over the compiled-in
+`WEBC_DEFAULT_DSN` — so the real database is never opened. If a test ever
+reaches your real data, the harness is broken — treat that as a bug in the
+harness first.
 
 ## `test/run.sh`
 

@@ -54,7 +54,8 @@ makes the real problems harder to see.
 7. **The caller owns the memory, and the docs say who frees what.** Any
    function that returns a pointer or a `String_Builder` documents the owner.
    `crud_rows_free`, `crud_form_options_free`, `MD_ChildRows` and the pool's
-   `db_pool_put` all exist because ownership is stated rather than inferred.
+   `db_close` release path all exist because ownership is stated rather than
+   inferred.
 
 8. **Test the parsing before the pretty part.** Route parsing, form extraction,
    migration history and the HTTP body cap get tests before a page is styled.

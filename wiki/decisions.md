@@ -54,8 +54,8 @@ state with any other, so there is nothing to lock.
   DB pool, for no gain on a single-process app.
 - *Thread pool.* Pool size becomes a hard concurrency limit and handlers must
   tolerate blocking the pool's threads.
-- *fork per connection.* No shared connection pool, and `db_pool_init()` up
-  front would be pointless.
+- *fork per connection.* No shared connection pool, and the lazy pool
+  (`pool_grow()` on first use) would be pointless.
 - *epoll with an explicit state machine.* The classic scalable answer — and
   it turns every handler into a callback chain. Reads worse for the same
   scale.
@@ -240,10 +240,11 @@ ERROR: <path>: Database scheme is too new. Contains more migrations applied
 than expected. Update your application.
 ```
 
-→ `SCHEMA_ERROR`, the open fails, `db_pool_init()` **latches**: the pool is
-dead for the process, `db_pool_get()` returns `NULL` immediately (one log
-line, no per-request retry), and the server still listens; DB-backed routes
-return 500.
+→ `SCHEMA_ERROR`, the open fails, and the pool **latches** on that first
+use: it stays dead for the process, `db_pool_get()` returns `NULL`
+immediately (one log line, no per-request retry), and the server keeps
+listening; DB-backed routes return 500. Nothing is opened before a request
+asks for the database, so the refusal happens at first use, not at startup.
 
 **Why.** The application genuinely does not know the schema it would be
 running against — columns, tables and constraints exist that no query in this
@@ -305,7 +306,16 @@ once, before anything touches the database:
    an explicit dialect that **overrides prefix detection**;
 2. `WEBC_DB` — the full DSN or file path (wins for the location);
 3. `WEBC_CONNECTION_STRING` — a raw DSN, read only when `WEBC_DB` is unset;
-4. neither → `~/sqlite3/webc_c/db`.
+4. `WEBC_DEFAULT_DSN` — the compiled-in constant in `src/webc.c`, the one
+   place to edit the connection string (this checkout ships it as
+   `~/sqlite3/webc_c/db`; a leading `~/` expands to `$HOME` because the DSN
+   never passes through a shell);
+5. nothing at all → **no connection is ever attempted**; DB routes answer
+   "no database configured". There is no baked `$HOME` fallback.
+
+The three globals the resolution used to write (`WEBC_DB_PATH`,
+`WEBC_DIR_PATH`, `WEBC_DEFAULT_SQL`) are macros over one set-once `Db_Cfg`
+struct in `db.h` - assigned in `main()`, read-only afterwards.
 
 `webc_db_lang()` then answers: the pin if set, else a `mysql:`/`postgres:`
 prefix on `WEBC_DB_PATH`, else SQLite (anything else is a file path).

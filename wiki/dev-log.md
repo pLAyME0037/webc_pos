@@ -1038,3 +1038,25 @@ Three user-reported design flaws (decisions taken same day):
 | not yet | A: mysql seed port; B: lazy pool; C: config-struct rewrite |
 | affected docs | `wiki/decisions.md` D9 (fail-at-first-use, not startup), D11 (no `$HOME` default anymore), `wiki/database.md`, `wiki/cli.md` (`HOME` no longer required for the DB), `wiki/architecture.md` startup step |
 | risk notes | `HOME` requirement exists *only* for the dead default → removed with it; `PIPES_AS_CONCAT` changes `||` semantics on mysql connections — verified no mysql-dialect SQL uses `\|\|` as logical OR before setting it; tests all set `WEBC_DB` explicitly, so removing the default cannot affect them |
+
+### Results (2026-11-07)
+
+| # | Shipped | Evidence |
+|---|---|---|
+| A | `migrations/0004_seed_pos/mysql.sql` is a real MySQL port: `INSERT IGNORE`, `DATE_SUB(UTC_TIMESTAMP(), INTERVAL n DAY)` (76 sites, incl. 4 dynamic `DIV` offsets), `LPAD` for `printf`, comma-join (`FROM o, k, products p WHERE ...`) where MySQL's JOIN precedence rejected `FROM o, k JOIN p ON ... o.n`. Header rewritten - the false "INTENTIONALLY SKIPPED (tests are sqlite-only)" reasoning is gone; the rule it violated is written down: **missing test coverage must not strip data from a dialect**. `mysql_drv_open()` now sets `sql_mode PIPES_AS_CONCAT` (verified: no mysql-dialect SQL uses `\|\|` as logical OR) so `a \|\| b` porting stays line-for-line. Two porting traps found the hard way: a `;` inside any comment breaks the naive `;` splitter (contract: none in comments - 4 fixed), and `FROM a, b JOIN c ON` cannot reference `a` in MySQL. Postgres 0004 stays comment-only (stub driver). | `mysql_test.py` **41/0 green**, fresh DB applies all 11 migrations incl. the seed |
+| B | Lazy pool: `serve.c` no longer calls `db_pool_init()` (removed with `db_pool_cleanup`/`db_pool_put` - zero callers). `pool_grow()` opens slot 1 on the first checkout; growth to `DB_POOL_SIZE` only when every slot is busy; **first-ever** open failure latches (one error, then NULL), a later failed grow degrades to a transient connection instead of failing. One process = one DSN; `webc_open_db_spec()` documented opt-in, no production caller. | smoke: no DB file before the first request, created on it, one `DB pool: first connection open (lazy)` line; full suite green as before |
+| C | No baked default: `WEBC_DB_PATH`/`WEBC_DIR_PATH`/`WEBC_DEFAULT_SQL` are now macros over one set-once `Db_Cfg db_cfg` struct (`db.h`); the `$HOME/sqlite3/webc_c` `else` branch, the `$HOME` requirement and `HOME_PATH` are gone; precedence documented exactly once (on `WEBC_DEFAULT_DSN`). Nothing configured → no connection is ever attempted. Bonus fix: a leading `~/` in any DSN expands to `$HOME` (the DSN never passes through a shell - the literal `~/` directory that a `WEBC_DEFAULT_DSN = "~/sqlite3/webc_c/db"` config created in the repo root was removed). | smoke with NULL constant: server listens, DB routes 500, `no database configured` logged **once** across 3 requests (latched); `WEBC_DB='~/nested/deep/db'` → `$HOME/nested/deep/db`, HTTP 200, no literal `~/`; default constant → `$HOME/sqlite3/webc_c/db` under a throwaway HOME (real DB untouched) |
+| extra | `resource/image/{user1,know_me}.png` placeholders were wiped by the install-script work (`git clean` of gitignored files) and took `http_test` down with `FileNotFoundError` - recreated (70-byte 1×1 PNGs). | `http_test` runs again |
+
+**Full suite after everything:** `./test/run.sh` exit 1, **21 failures - the exact
+baseline set** (sidebar nav 1, `MD_Column` 17+3): http 119/1, pos 372/17,
+shop 118/0, role 48/0, crud 157/3, geo 32/0, **mysql 41/0**, https 6/0.
+Nothing regressed; the MySQL suite is green again (it was red at entry time).
+
+**Wiki synced in this pass:** `decisions.md` (D2 pool wording, D9 first-use
+latch, D11 no-default + `Db_Cfg` + tilde), `database.md` (precedence table,
+lazy pool, one-server rule, `PIPES_AS_CONCAT`, 0004 seed), `cli.md`
+(HOME row, pool output/latch wording), `architecture.md` (diagram +
+startup steps), `testing.md` (no implicit default), `WIKI.md`
+(comment-only claims for 0004 now false), `simplexity.md` (`db_pool_put`
+removed from the ownership list).

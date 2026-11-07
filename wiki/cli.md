@@ -37,19 +37,17 @@ Listening to http://127.0.0.1:9000/ (coroutine mode)
 ```
 
 Before the socket opens it initialises TLS (if `WEBC_TLS_CERT`/`WEBC_TLS_KEY`
-are set) and the **DB pool**, so a bad DSN or a bad certificate fails here, at
-startup, rather than on the first request.
+are set) — a bad certificate fails here, at startup. The **DB pool is not
+warmed**: no connection exists until the first request needs the database
+(see [Known gaps](#known-gaps)).
 
-Startup always prints two lines regardless of configuration:
+Startup prints one line:
 
 ```
-DB pool initialized with 8 connections
 Listening to http://<addr>:<port>/ (coroutine mode)
 ```
 
-The second says `https` when TLS is configured. If the pool cannot open, you
-get an `ERROR:` first and **no** `DB pool initialized` line — see
-[Known gaps](#known-gaps) below.
+It says `https` when TLS is configured.
 
 **Address is not configurable from the CLI.** It is the compile-time constant
 `DEFAULT_SERVER_ADDRESS` (`src/webc.c:28`), currently `127.0.0.1`. The
@@ -143,18 +141,20 @@ Set before dispatch, so they affect every command including `help`:
 
 | Variable | Effect |
 |---|---|
-| `HOME` | **Required.** Missing → `ERROR: No $HOME environment variable is setup...`, exit 1 — before anything else runs. |
+| `HOME` | Only used to expand a leading `~/` in a DSN (the DSN never passes through a shell). Not required for startup; unset leaves `~/` literal. |
 | `WEBC_DEFAULT_SQL` | Pins the dialect: `SQLITE3` / `MYSQL` / `POSTGRES` (case-insensitive). Wins over the `mysql:`/`postgres:` prefix; an unknown value logs an error and falls back to the prefix. |
 | `WEBC_DB` | Full DSN or file path; wins for the location. For a SQLite path its parent becomes the "webc dir". |
 | `WEBC_CONNECTION_STRING` | Raw DSN, read only when `WEBC_DB` is unset. |
 | `WEBC_TRACE_MIGRATION_QUERIES` | Present → print each migration's SQL. Value is irrelevant; only presence matters. |
 | `WEBC_TLS_CERT` / `WEBC_TLS_KEY` | PEM paths; must be set together. |
 
-Unset, the DB is `~/sqlite3/webc_c/db`. Between env and that default sits a
-**compiled-in constant**: `WEBC_DEFAULT_DSN` above `main()` in `src/webc.c` —
-edit the DSN there and rebuild (`./build/bin/nob`) to change the database of
-every run permanently, no env vars needed. Env still wins over it, so tests
-stay isolated.
+This checkout ships `WEBC_DEFAULT_DSN = "~/sqlite3/webc_c/db"` (a leading
+`~/` expands to `$HOME`). Between env and that constant sits nothing else:
+env wins over the constant, so tests stay isolated. If neither env nor the
+constant yields a DSN, **no connection is attempted** — DB routes answer
+"no database configured". Change the database permanently by editing the
+constant in `src/webc.c` and rebuilding (`./build/bin/nob`), no env vars
+needed.
 
 ## Known gaps
 
@@ -205,20 +205,22 @@ anything, so touching vendored SQLite **would** retrigger a rebuild. The
 The startup message (`dev: watching display/ core/ src/ css/ webc.c nob.c ...`)
 is a separate hardcoded string and does not reflect the array either.
 
-### The database may be refused at startup
+### The database may be refused at first use
 
 ```
+Listening to http://127.0.0.1:8080/ (coroutine mode)
+... first request that needs the database ...
 ERROR: /home/playme/sqlite3/webc_c/db: Database scheme is too new. Contains
 more migrations applied than expected. Update your application.
 ERROR: Failed to initialize DB pool connection 0
-Listening to http://127.0.0.1:8080/ (coroutine mode)
 ```
 
-`db_pool_init()` stops at the first failed connection and **latches**: the
-pool stays down for the whole process, so `db_pool_get()` refuses immediately
-(one log line) instead of re-running eight opens plus eight schema checks on
-every request. The server still listens: pages that need the database return
-500 until the DSN/schema is fixed and the process restarts.
+`db_pool_get()` opens connection 1 on the first DB request; if that first
+open fails (bad DSN, refused schema) it **latches**: the pool stays down for
+the whole process, so `db_pool_get()` refuses immediately (one log line)
+instead of re-running an open plus the schema check on every request. The
+server still listens: pages that need the database return 500 until the
+DSN/schema is fixed and the process restarts.
 
 The retry storm this describes was fixed on 2026-11-05 (pool checkout +
 latched init) — see [dev-log.md](dev-log.md) for the original analysis. The
