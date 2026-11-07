@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Example WebC Site - <c> STR(PAGE_TITLE); </c></title>
     <link href="/css/output.css" rel="stylesheet">
-    <script src="/js/sidebarSwitcher.js">
-        (function () {
-            const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
-            if (isCollapsed) {
-              document.documentElement.classList.add('sidebar-collapsed');
-            }
-        </c>();
+    <script src="/js/sidebarSwitcher.js"></script>
+    <script>
+    (function () {
+        const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+        if (isCollapsed) {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+    })();
     </script>
     <script src="/js/themeSwitcher.js"></script>
     <script src="/js/ListExpandSwitcher.js"></script>
@@ -88,7 +89,8 @@
             </div>
         </header>
 
-        <div class="flex-1 flex overflow-hidden relative min-h-0">
+        <div class="flex-1 flex overflow-hidden relative min-h-0"
+             onscroll="this.scrollLeft=0;this.scrollTop=0;">
             <c> #include "../component/sidebar.h" </c>
 
             <div class="flex-1 flex flex-col min-w-0">

@@ -62,14 +62,14 @@
                 {id:'sale-sku',k:'sku',fs:['sku','psku'],all:'All SKUs'},
                 {id:'sale-bar',k:'bar',fs:['barcode'],all:'All barcodes'}
             ];
-            function sel(){
+            function sel() {
                 var kv={};
-                F.forEach(function(f){kv[f.k]=g(f.id).value;</c>;
+                F.forEach(function(f) { kv[f.k] = g(f.id).value; });
                 return kv;
             }
-            function hit(u,f,v){
-                for(var j=0;j<f.fs.length;j++){
-                    if(u[f.fs[j]]===v)return true;
+            function hit(u, f, v){
+                for(var j = 0; j < f.fs.length; j++) {
+                    if(u[f.fs[j]] === v) return true;
                 }
                 return false;
             }
@@ -88,15 +88,15 @@
             // own options,
             // the set is never empty and no two facets can cancel each
             // other out - the chain reaction stays consistent at every step.
-            function opts(f,kv){
-                var seen={},out=[];
-                U.forEach(function(u){
-                    if(!pass(u,kv,f.k))return;
-                    for(var j=0;j<f.fs.length;j++){
-                        var v=u[f.fs[j]]||'';
-                        if(v&&!seen[v]){seen[v]=1;out.push(v);}
+            function opts(f, kv) {
+                var seen={}, out=[];
+                U.forEach(function(u) {
+                    if(!pass(u, kv, f.k)) return;
+                    for(var j = 0; j < f.fs.length; j++) {
+                        var v = u[f.fs[j]] || '';
+                        if(v && !seen[v]) { seen[v] = 1; out.push(v); }
                     }
-                </c>;
+                });
                 out.sort();
                 return out;
             }
@@ -108,14 +108,14 @@
                 vals.forEach(function(v){
                     var o=document.createElement('option');
                     o.value=v;o.textContent=v;s.appendChild(o);
-                </c>;
+                });
                 if(keep){s.value=keep;if(!s.value)s.value='';}
             }
             // chain reaction: one facet changed -> re-derive EVERY facet's options
             // (each against the other facets' current selections),
             // then rebuild the list
             function refresh(){
-                F.forEach(function(f){ fill(f,opts(f,sel())); </c>;
+                F.forEach(function(f) { fill(f,opts(f,sel())); });
             }
             var prod=g('sale-product'),
                 priceEl=g('sale-price');
@@ -134,21 +134,21 @@
                     o.textContent=u.name+' - '+(u.sku||u.psku||'');
                     o.setAttribute('data-price',fmt(u.price));
                     prod.appendChild(o);
-                </c>;
+                });
                 if(prev){
                     prod.value=prev;
                     if(prod.value!==prev)prod.value='';
                 }
                 showPrice();}
             function onFilter(){refresh();rebuild();}
-            F.forEach(function(f){g(f.id).addEventListener('change',onFilter);</c>;
+            F.forEach(function(f){ g(f.id).addEventListener('change',onFilter); });
             prod.addEventListener('change',showPrice);
             var lines=g('sale-lines'),totalEl=g('sale-total'),seq=0;
             function recalc(){
                 var t=0;
-                lines.querySelectorAll('[data-line]').forEach(function(r){
+                lines.querySelectorAll('[data-line]').forEach(function(r) {
                     t+=parseFloat(r.getAttribute('data-total'))||0;
-                </c>;
+                });
                 totalEl.textContent=fmt(t);
             }
             // add the picked unit + qty as a posted line, then reset
@@ -189,10 +189,10 @@
                 if(e.target.hasAttribute&&e.target.hasAttribute('data-rm')){
                     var r=e.target.closest('[data-line]');if(r){r.remove();recalc();}
                 }
-            </c>;
+            });
             refresh();
             rebuild();
-        </c>();
+        })();
     </script>
 </div>
 <c> } </c>

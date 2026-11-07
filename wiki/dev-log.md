@@ -12,6 +12,13 @@ Status vocabulary:
 **blocked** = needs something first
 
 ---
+## 2026-11-07 — Fix image picker focus jump & inline script syntax errors — **done**
+
+- Fixed layout viewport shift in `/pos/users` and `/pos/customers`: `<label>` wrapping file `<input class="sr-only">` had no `relative` positioning. Focus on click scrolled ancestor `<div class="flex-1 flex overflow-hidden relative min-h-0">`, hiding sidebar and creating blank space. Added `relative` to all image upload labels and `[data-img-upload]` wrappers.
+- Fixed `Uncaught SyntaxError: Unexpected token ')'` in `display/component/master_child.h.tt`: corrected `    ();` to `    })();`.
+- Fixed unclosed `<a href="/accounts">` in `display/component/sidebar.h.tt`.
+- Fixed `<script src>` tag and malformed `</c>` in `display/layout/header.h.tt` and `display/pos/sale.h.tt`.
+
 ## 2026-11-07 — ImageUpload in master_child whole system — **done**
 
 Wired `js/ImageUpload.js` across the entire master-child engine

@@ -503,13 +503,7 @@ MD_Column md_geo_hierarchy_columns[] = {
         .label    = "Code",
         .type     = COL_TYPE_TEXT,
         .nullable = false,
-    }, {
-        .name     = "created_at",
-        .label    = "Created",
-        .type     = COL_TYPE_DATE,
-        .nullable = false,
-        .computed = 1,
-    },
+    }
 };
 
 const size_t md_geo_hierarchy_columns_count = ARRAY_LEN(md_geo_hierarchy_columns);

@@ -219,7 +219,7 @@
     <div class="border-b border-surface0 bg-crust shrink-0">
         <div id="sidebar-pad"
              class="flex items-center p-3 user-card">
-            <a href="/accounts"
+            <a href="/accounts">
                 <c> STR(SIDEBAR_AVATAR_RAW); </c>
             </a>
             <div class="ml-3 min-w-0 nav-label">
