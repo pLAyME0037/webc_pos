@@ -276,15 +276,23 @@ void serve_pos_users(Serve_Context *sc) {
 }
 
 // Required keys first: phone MUST be present and non-empty (values[0]
-// drives the SERVE_* 400), then the identity fields the avatar cell and
-// email input always send. Optional keys ride body first, query second -
-// the /pos/customers and /pos/org child tabs pass their fk in the query
+// drives the SERVE_* 400), then the identity fields the email input
+// always send. profile_pic rides the optional block: the master form
+// renders it as a file input (COL_TYPE_IMG), and an empty file input is
+// ABSENT from the POST - treating it as required turned every no-file
+// create/update into a 400. Absent/empty keeps the stored pic (COALESCE
+// below) or stores NULL on insert, which is what create_pos_user always
+// documented. Optional keys ride body first, query second - the
+// /pos/customers and /pos/org child tabs pass their fk in the query
 // string; status/location/user_type default when absent (see SQL above).
+// Bind order stays phone,name,username,email,profile_pic,status,... :
+// the opt block appends in list order, so profile_pic must lead it.
 static const char *usr_fields[] = {
-    "phone", "name", "username", "email", "profile_pic",
+    "phone", "name", "username", "email",
 };
 static const char *usr_opt_fields[] = {
-    "status", "customer_id", "org_unit_id", "village_id", "user_type_dict_id",
+    "profile_pic", "status", "customer_id", "org_unit_id", "village_id",
+    "user_type_dict_id",
 };
 SERVE_CREATE(pos_users, pos_user, usr_fields, usr_opt_fields)
 SERVE_UPDATE(pos_users, pos_user, usr_fields, usr_opt_fields)

@@ -150,8 +150,9 @@ def main():
     t.chk("edit page shows id", body.decode().count(uid), 2)
     st, body, _ = c.get("/users")
     t.chk("list shows uuid id", body.decode().count(uid), 3)
-    t.chk("list has ui-avatars fallback", body.decode().count("ui-avatars") >= 1,
-          "True")
+    t.chk("list has inline svg fallback (no external host)",
+          body.decode().count("data:image/svg+xml") >= 1
+          and body.decode().count("ui-avatars") == 0, "True")
 
     # ---- update: with file replaces, without keeps --------------------
     st, _, _ = c.post_multipart(

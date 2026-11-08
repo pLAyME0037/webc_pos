@@ -240,10 +240,13 @@ def main():
            and "Sok Dara" in first_td
            and "pos_avatar_1" in first_td), "True")
     ei = edit_inputs(edit)
+    # profile_pic is a file input now (COL_TYPE_IMG): browsers forbid
+    # prefilling input[value] on file inputs, so the current pic rides the
+    # preview <img src> instead of the input.
     t.chk("avatar edit row prefills parts + contact",
-          [ei.get(k) for k in
-           ("profile_pic", "name", "username", "email", "phone")],
-          [PICK, "Sok Dara", "pos_avatar_1", "dara@pos.kh", "0990000121"])
+          [ei.get(k) for k in ("name", "username", "email", "phone")]
+          + [f'src="{PICK}"' in edit],
+          ["Sok Dara", "pos_avatar_1", "dara@pos.kh", "0990000121", True])
     t.chk("status select in avatar edit row",
           'name="status"' in edit, "True")
     t.chk("avatar status line + ring (ACTIVE = blue)",

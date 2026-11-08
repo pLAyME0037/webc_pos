@@ -886,6 +886,7 @@ SELECT
     d.name_kh AS district_name,
     p.name_kh AS province_name,
     v.deleted_at AS deleted_at,
+    v.created_at AS created_at
 FROM villages v
 JOIN communes c ON v.commune_id = c.id
 JOIN districts d ON c.district_id = d.id

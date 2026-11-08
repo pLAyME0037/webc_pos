@@ -14,10 +14,16 @@ Status vocabulary:
 ---
 ## 2026-11-07 — Fix image picker focus jump & inline script syntax errors — **done**
 
-- Fixed layout viewport shift in `/pos/users` and `/pos/customers`: `<label>` wrapping file `<input class="sr-only">` had no `relative` positioning. Focus on click scrolled ancestor `<div class="flex-1 flex overflow-hidden relative min-h-0">`, hiding sidebar and creating blank space. Added `relative` to all image upload labels and `[data-img-upload]` wrappers.
-- Fixed `Uncaught SyntaxError: Unexpected token ')'` in `display/component/master_child.h.tt`: corrected `    ();` to `    })();`.
+- Fixed layout viewport shift in `/pos/users` and `/pos/customers`: `<label>`
+  wrapping file `<input class="sr-only">` had no `relative` positioning. Focus on
+  click scrolled ancestor `<div class="flex-1 flex overflow-hidden relative
+  min-h-0">`, hiding sidebar and creating blank space. Added `relative` to all
+  image upload labels and `[data-img-upload]` wrappers.
+- Fixed `Uncaught SyntaxError: Unexpected token ')'`
+  in `display/component/master_child.h.tt`: corrected `    ();` to `    })();`.
 - Fixed unclosed `<a href="/accounts">` in `display/component/sidebar.h.tt`.
-- Fixed `<script src>` tag and malformed `</c>` in `display/layout/header.h.tt` and `display/pos/sale.h.tt`.
+- Fixed `<script src>` tag and malformed `</c>`
+  in `display/layout/header.h.tt` and `display/pos/sale.h.tt`.
 
 ## 2026-11-07 — ImageUpload in master_child whole system — **done**
 
@@ -1283,3 +1289,43 @@ uncommitted `src/pos/sale.c` edit (compile error, user's own concurrent
 work) — verification ran in a throwaway copy of the tree with only that one
 file reverted; everything else (templates, js, nob.c, run.sh) is identical
 to the working tree.
+
+## 2026-11-08 — /create & /pos/users perceived slowness (investigation → external avatar fix)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user reports "performance issue in /create, focus /pos/users, maybe ImageUpload.js or build issue". Measure first, fix only what evidence names |
+| measurements (before) | build `nob` 0.44s (no-op faster); server TTFB <20ms on `/login /users /people /pos/users` incl. the live :8080 server; browser `/pos/users`: cold DCL ~290ms, warm ~140ms, **zero long tasks**, `ImageUpload.js` fetch 8ms, `iuInit()` 0ms, create-modal open 7ms, `/users/create` POST (invalid payload) 3ms; `/users` page **load 662ms = 3× external `ui-avatars.com` fetches ~570ms each** |
+| verdict | `ImageUpload.js` exonerated (8ms fetch / 0ms init / no long tasks); build fine; server fine. Only real stall = external avatar service on `/users` list (offline/DNS-fail turns 570ms into multi-second hang) |
+| what changes | `display/user.h.tt` fallback branch: `https://ui-avatars.com/api/?name=…` → **inline `data:image/svg+xml` silhouette** (zero network, self-contained, no URL-encoding of Khmer names needed); `test/http_test.py` check `list has ui-avatars fallback` retargeted to the new inline fallback |
+| what works / does not work yet | works: list avatar `<img>` with local pic keeps serving `/resource/image/upload/*.webp`. not yet verified: new fallback renders (suite), `img_upload 25` unchanged |
+| affected docs | `wiki/dev-log.md` only |
+| risk notes | `data:` URI must not contain `"` (attribute delimiter) → single quotes inside SVG, `#` percent-encoded as `%23`; test asserts on `ui-avatars` string → must be updated in same change or baseline moves; no other template uses ui-avatars (grep = 1 hit) |
+
+## 2026-11-08 — suite drift after image-input commits (3 regressions)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | baseline moved 21 → 24 after commits `685a5d4`/`b65e95b` (image input as file input). Stash-proof measured: my perf fix causes none (suite identical with/without). Root-caused all three, fix each |
+| failures (new vs `bc72a43` = 21 exact: http 1 + pos 17 + crud 3) | 1) `golden migration 0003_pos_eshop` — `b65e95b` removed `v.created_at AS created_at` from the **golden copy only**, `migrations/0003_pos_eshop/sqlite3.sql` untouched (test = byte-compare, golden exists to pin migration bytes). 2) `users: create form accepted (302) got 400` — `pos.c` `usr_fields[]` lists `profile_pic` as required, but `COL_TYPE_IMG` now renders a **file input**, and an empty file input is absent from the POST → `SERVE_EXTRACT_ONE` on_miss → 400 (at `bc72a43` it was a text input the test always filled). 3) `avatar edit row prefills parts` got `profile_pic=None` — file inputs cannot carry a `value` (browser security); the current pic now rides the preview `<img src>` |
+| fixes | 1) restore the golden line (migration files are byte-pinned history — never edit them). 2) move `profile_pic` from `usr_fields` to the **front** of `usr_opt_fields` (absent → NULL / COALESCE keep — matches `create_pos_user`'s own comment "profile_pic stores NULL when blank"); positional bind order in `create_pos_user`/`update_pos_user` stays `phone,name,username,email,profile_pic,status,…` because the opt block appends in list order. 3) `pos_test` avatar prefill check: name/username/email/phone from inputs + `src="{PICK}"` present in the edit form (preview carries the current pic) |
+| what works / does not work yet | works: `bc72a43` suite = 21 exact (verified in a worktree). not yet: post-fix suite back to 21 |
+| affected docs | `wiki/dev-log.md` |
+| risk notes | `count<10` guards in `create_pos_user`/`update_pos_user` must stay satisfied → `usr_fields(4) + usr_opt_fields(6) = 10`; crud contract skips `type=file` so it never posts `profile_pic` — required-list placement is what broke it; golden restore must be byte-identical to the migration file |
+
+### Results (2026-11-08, perf + regression round)
+
+| | Shipped | Evidence |
+|---|---|---|
+| perf verdict | `ImageUpload.js` **exonerated**: fetch 8ms, `iuInit()` 0ms, no long tasks on `/pos/users`; build `nob` 0.44s; server TTFB <20ms everywhere incl. the live :8080; create modal open 7ms, create POST 3ms; `/pos/users` cold DCL ~290ms / warm ~140ms | CDP `performance` timing across `/pos/users`, `/users`, `/people` + navigation/resource breakdown + `PerformanceObserver('longtask')` = `[]` |
+| the one real stall | `/users` load **662ms = 3× external `ui-avatars.com` fetches (~570ms each)** — offline/DNS-fail turns that into a multi-second hang | after fix: **load 184ms, `ext: []`** (zero cross-origin resources), fallback renders (`naturalWidth=150`) |
+| avatar fallback | `display/user.h.tt`: external URL → **inline `data:image/svg+xml` silhouette** (no `"` inside the attr, `#` as `%23`, no Khmer-name URL-encoding needed); `http_test` check retargeted to `data:image/svg+xml` **and** asserts `ui-avatars` count == 0 | suite: `list has inline svg fallback` PASS |
+| regression 1 (golden) | golden line restored — `test/golden/0003_pos_eshop.sqlite3.sql` **byte-equal** to `migrations/0003_pos_eshop/sqlite3.sql` again (python byte-compare `True`); migration files stay untouched (they pin applied history) | `golden migration 0003_pos_eshop` PASS |
+| regression 2 (users create 400) | `src/pos/pos.c`: `profile_pic` moved `usr_fields` → front of `usr_opt_fields` (4+6=10 keeps `count<10` guards; opt appends in list order so positional binds `phone,name,username,email,profile_pic,status,…` unchanged). Root cause: file input absent from no-file POSTs → required-extract on_miss → 400 | `users: create form accepted (302)` PASS (and the update path, previously masked by `continue` after the create fail) |
+| regression 3 (avatar prefill) | `test/pos_test.py`: file inputs cannot carry `value` — prefill check now reads name/username/email/phone from inputs + `src="{PICK}"` from the preview `<img>` | `avatar edit row prefills parts + contact` PASS |
+| suite | full run after all three fixes | **21 fails = byte-identical fail set to `bc72a43`** (http 1 sidebar + pos 17 + crud 3 pre-existing provinces/districts/communes 400s) + `img_upload 25/0` + geo/mysql/https green |
+| notes | the 3 crud `create 400`s (provinces/districts/communes: `prov_id`/`dist_id`/`comm_id` required by `SERVE_*` but never rendered as form inputs) are **pre-existing at `bc72a43`**, verified by building that commit in a worktree and running the suite there (21 exact) — untouched this round | worktree removed |

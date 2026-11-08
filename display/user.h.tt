@@ -120,7 +120,7 @@
                     <td class="px-6 py-4 whitespace-nowrap text-left">
                         <c> const char *pp = users.items[i].profile_pic; bool has_pic = pp != NULL && pp[0] != '\0'; </c>
                         <div class="w-10 h-10 relative rounded-full ring-4 ring-white dark:ring-gray-800 shadow-sm bg-gray-100 dark:bg-gray-700 group">
-                            <img src="<c> if (has_pic) { STR(pp); } else { nob_sb_append_cstr(sb, "https://ui-avatars.com/api/?name="); ESCAPED(users.items[i].name); nob_sb_append_cstr(sb, "&color=7F9CF5&background=EBF4FF&bold=true"); } </c>"
+                            <img src="<c> if (has_pic) { STR(pp); } else { nob_sb_append_cstr(sb, "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='15' r='7' fill='%237F9CF5'/%3E%3Cpath d='M6 36c0-8 6-13 14-13s14 5 14 13' fill='%237F9CF5'/%3E%3C/svg%3E"); } </c>"
                                  alt="<c> ESCAPED(users.items[i].profile_pic) </c>"
                                  class="w-full h-full rounded-full object-cover transition-opacity duration-300 opacity-50">
                         </div>
