@@ -258,7 +258,8 @@ def main():
             const form = document.querySelector('[data-img-upload]')
                 .closest('form');
             if (!form) return { fatal: 'no form' };
-            const vals = { name: 'Img Upload ' + marker,
+            const vals = { first_name: 'Img Upload ' + marker,
+                           last_name: '',
                            username: marker.toLowerCase(),
                            email: marker.toLowerCase() + '@test.local',
                            phone: '09' + marker.slice(5) };

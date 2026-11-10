@@ -15,28 +15,16 @@
 // and keep their values on update.
 // =========================================================================
 
-static const char *shift_cash_parts[] = {
-    "opening_cash", "closing_cash", "expected_cash",
-};
-static const char *shift_cash_labels[] = { "Opening", "Closing", "Expected" };
-static const MD_Cell shift_cash_cell = {
-    .parts       = shift_cash_parts,
-    .part_labels = shift_cash_labels,
-    .part_count  = 3,
-    .style       = "stack",
-};
-
 MD_Column md_shifts_columns[] = {
-    { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
-    { .name = "staff_id", .label = "Staff", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "staff", .fk_label = "first_name" },
-    { .name = "status", .label = "Status", .type = COL_TYPE_TEXT,
-      .nullable = false },   // OPEN | CLOSED | AUDITED (CHECK)
-    { .name = "opening_cash", .label = "Cash", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &shift_cash_cell },
-    { .name = "notes", .label = "Notes", .type = COL_TYPE_TEXT,
-      .nullable = true },
+    MD_FK("org_unit_id", "Branch", "org_units", "ou_name", .nullable = false),
+    MD_FK("staff_id", "Staff", "staff", "staff_code", .nullable = false),
+    MD_FIELD("status", "Status", COL_TYPE_TEXT, .nullable = false),
+    MD_STACK("Cash",
+        MD_FIELD("opening_cash", "Opening Cash", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("closing_cash", "Closing Cash", COL_TYPE_NUM, .nullable = true),
+        MD_FIELD("expected_cash", "Expected Cash", COL_TYPE_NUM, .nullable = true)
+    ),
+    MD_FIELD("notes", "Notes", COL_TYPE_TEXTAREA, .nullable = true),
 };
 const size_t md_shifts_columns_count = ARRAY_LEN(md_shifts_columns);
 
@@ -47,8 +35,11 @@ MD_Column md_shifts_child_columns[] = {
       .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
     { .name = "status", .label = "Status", .type = COL_TYPE_TEXT,
       .nullable = false },
-    { .name = "opening_cash", .label = "Cash", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &shift_cash_cell },
+    MD_STACK("Cash",
+        MD_FIELD("opening_cash", "Opening", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("closing_cash", "Closing", COL_TYPE_NUM, .nullable = true),
+        MD_FIELD("expected_cash", "Expected", COL_TYPE_NUM, .nullable = true)
+    ),
     { .name = "notes", .label = "Notes", .type = COL_TYPE_TEXT,
       .nullable = true },
 };

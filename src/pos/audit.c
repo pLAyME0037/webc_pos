@@ -11,28 +11,16 @@
 // render and no write routes are registered.
 // =========================================================================
 
-static const char *audit_diff_parts[] = { "old_values", "new_values" };
-static const char *audit_diff_labels[] = { "Old", "New" };
-static const MD_Cell audit_diff_cell = {
-    .parts       = audit_diff_parts,
-    .part_labels = audit_diff_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
 static MD_Column md_audit_columns[] = {
-    { .name = "user_id", .label = "User", .type = COL_TYPE_FK_SELECT,
-      .nullable = true, .fk_table = "users", .fk_label = "name" },
-    { .name = "table_name", .label = "Table", .type = COL_TYPE_TEXT,
-      .nullable = false },
-    { .name = "record_id", .label = "Record", .type = COL_TYPE_TEXT,
-      .nullable = false },
-    { .name = "action", .label = "Action", .type = COL_TYPE_TEXT,
-      .nullable = false },   // INSERT|UPDATE|DELETE|SOFT_DELETE|RESTORE (CHECK)
-    { .name = "old_values", .label = "Diff", .type = COL_TYPE_TEXT,
-      .nullable = true, .cell = &audit_diff_cell },
-    { .name = "created_at", .label = "When", .type = COL_TYPE_DATE,
-      .nullable = false, .computed = 1 },
+    MD_FK("user_id", "User", "users", "username", .nullable = true),
+    MD_FIELD("table_name", "Table", COL_TYPE_TEXT, .nullable = false),
+    MD_FIELD("record_id", "Record ID", COL_TYPE_TEXT, .nullable = false),
+    MD_FIELD("action", "Action", COL_TYPE_TEXT, .nullable = false),
+    MD_STACK("Changes",
+        MD_FIELD("old_values", "Before", COL_TYPE_TEXTAREA, .nullable = true),
+        MD_FIELD("new_values", "After", COL_TYPE_TEXTAREA, .nullable = true)
+    ),
+    MD_FIELD("created_at", "Timestamp", COL_TYPE_DATE, .computed = 1),
 };
 static const size_t md_audit_columns_count = ARRAY_LEN(md_audit_columns);
 

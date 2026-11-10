@@ -10,36 +10,21 @@
 
 // =========================================================================
 // /pos/alerts: user/order FKs (both nullable) + alert_type + raw_payload
-// + a {is_seen,is_sent} flags stack cell. created_at rides its column
-// default (not a form key).
+// + a {is_seen,is_sent} flags stack cell (0/1 MD_CHOICE per flag - the
+// flags store integer CHECK (0,1) columns, so free-text inputs would
+// let a hand-rolled POST poison the column; Phase 13 contract test).
+// created_at rides its column default (not a form key).
 // =========================================================================
 
-static const char *alert_flag_parts[] = { "is_seen", "is_sent" };
-static const char *alert_flag_labels[] = { "Seen", "Sent" };
-// 0/1 choice per flag: the flags store integer CHECK (0,1) columns, so
-// free-text inputs would let a hand-rolled POST poison the column - the
-// form offers the two legal values (Phase 13 contract test caught this).
-static const char *alert_flag_opts[] = { "0", "1", NULL };
-static const char **alert_flag_choices[] = { alert_flag_opts, alert_flag_opts };
-static const MD_Cell alert_flag_cell = {
-    .parts        = alert_flag_parts,
-    .part_labels  = alert_flag_labels,
-    .part_choices = alert_flag_choices,
-    .part_count   = 2,
-    .style        = "stack",
-};
-
 MD_Column md_alerts_columns[] = {
-    { .name = "user_id", .label = "User", .type = COL_TYPE_FK_SELECT,
-      .nullable = true, .fk_table = "users", .fk_label = "name" },
-    { .name = "order_id", .label = "Order", .type = COL_TYPE_FK_SELECT,
-      .nullable = true, .fk_table = "orders", .fk_label = "order_number" },
-    { .name = "alert_type", .label = "Type", .type = COL_TYPE_TEXT,
-      .nullable = false },   // MAIL | POPUP | ORDER_DELAY
-    { .name = "is_seen", .label = "Flags", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &alert_flag_cell },
-    { .name = "raw_payload", .label = "Payload", .type = COL_TYPE_TEXT,
-      .nullable = false },
+    MD_FK("user_id", "User", "users", "username", .nullable = true),
+    MD_FK("order_id", "Order", "orders", "order_number", .nullable = true),
+    MD_FIELD("alert_type", "Type", COL_TYPE_TEXT, .nullable = false),
+    MD_FIELD("raw_payload", "Payload", COL_TYPE_TEXTAREA, .nullable = false),
+    MD_STACK("Status",
+        MD_CHOICE("is_seen", "Seen", ((const char*[]){"0", "1", NULL}), .nullable = false),
+        MD_CHOICE("is_sent", "Sent", ((const char*[]){"0", "1", NULL}), .nullable = false)
+    ),
 };
 const size_t md_alerts_columns_count = ARRAY_LEN(md_alerts_columns);
 

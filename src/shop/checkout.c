@@ -246,19 +246,30 @@ void serve_shop_checkout_post(Serve_Context *sc) {
                 // - 0007: only filled when the buyer deliberately creates
                 // an account); the empty hash keeps the account out of any
                 // login (login also requires ADMIN).
+                // One checkout "name" box -> 0003 first_name/last_name:
+                // split at the first space, rest stays in last_name.
+                String_View g_first = name, g_last = sv_from_cstr("");
+                for (size_t i = 0; i < name.count; ++i) {
+                    if (name.data[i] == ' ') {
+                        g_first.count = i;
+                        g_last.data = name.data + i + 1;
+                        g_last.count = name.count - i - 1;
+                        break;
+                    }
+                }
                 static const char *const uq[SQL_LANG_COUNT] = {
                     [SQL_SQLITE] = "INSERT INTO users "
-                        "(id, name, username, email, phone, password_hash, "
-                         "user_type_dict_id, customer_id) "
-                        "VALUES (?, ?, ?, ?, ?, '', 'CUSTOMER', ?);",
+                        "(id, first_name, last_name, username, email, phone, "
+                         "password_hash, user_type_dict_id, customer_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?, '', 'CUSTOMER', ?);",
                     [SQL_MYSQL] = "INSERT INTO users "
-                        "(id, name, username, email, phone, password_hash, "
-                         "user_type_dict_id, customer_id) "
-                        "VALUES (?, ?, ?, ?, ?, '', 'CUSTOMER', ?);",
+                        "(id, first_name, last_name, username, email, phone, "
+                         "password_hash, user_type_dict_id, customer_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?, '', 'CUSTOMER', ?);",
                     [SQL_POSTGRES] = "INSERT INTO users "
-                        "(id, name, username, email, phone, password_hash, "
-                         "user_type_dict_id, customer_id) "
-                        "VALUES ($1, $2, $3, $4, $5, '', 'CUSTOMER', $6);",
+                        "(id, first_name, last_name, username, email, phone, "
+                         "password_hash, user_type_dict_id, customer_id) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, '', 'CUSTOMER', $7);",
                 };
                 char uid[40];
                 webc_uuid(uid);
@@ -266,11 +277,12 @@ void serve_shop_checkout_post(Serve_Context *sc) {
                 sql_stmt stmt = {0};
                 if (sql_prepare(db, uq[db->lang], &stmt)
                     && sql_bind(&stmt, 1, SQL_SV(sv_from_cstr(uid)))
-                    && sql_bind(&stmt, 2, SQL_SV(name))
-                    && sql_bind(&stmt, 3, SQL_SV(sv_from_cstr(ph)))
-                    && sql_bind(&stmt, 4, SQL_NIL())   // email: NULL (optional)
-                    && sql_bind(&stmt, 5, SQL_SV(phone))
-                    && sql_bind(&stmt, 6, SQL_SV(sv_from_cstr(customer_id)))
+                    && sql_bind(&stmt, 2, SQL_SV(g_first))
+                    && sql_bind(&stmt, 3, SQL_SV(g_last))
+                    && sql_bind(&stmt, 4, SQL_SV(sv_from_cstr(ph)))
+                    && sql_bind(&stmt, 5, SQL_NIL())   // email: NULL (optional)
+                    && sql_bind(&stmt, 6, SQL_SV(phone))
+                    && sql_bind(&stmt, 7, SQL_SV(sv_from_cstr(customer_id)))
                     && sql_final_step(&stmt)) {
                     // created
                 } else {

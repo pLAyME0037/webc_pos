@@ -135,9 +135,9 @@ defer:
 
 static bool delete_category(db_t *db, String_View id) {
     static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "DELETE categories WHERE id = ?;",
-        [SQL_MYSQL]    = "DELETE categories WHERE id = ?;",
-        [SQL_POSTGRES] = "DELETE categories WHERE id = $1;",
+        [SQL_SQLITE]   = "DELETE FROM categories WHERE id = ?;",
+        [SQL_MYSQL]    = "DELETE FROM categories WHERE id = ?;",
+        [SQL_POSTGRES] = "DELETE FROM categories WHERE id = $1;",
     };
     sql_stmt stmt = {0};
     bool result = true;

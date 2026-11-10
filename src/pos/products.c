@@ -13,37 +13,20 @@
 // Two child tabs: product_variants and inventory_stocks.
 // =========================================================================
 
-static const char *pr_sku_parts[]  = { "sku", "barcode" };
-static const char *pr_sku_labels[] = { "SKU", "Barcode" };
-static const MD_Cell pr_sku_cell = {
-    .parts       = pr_sku_parts,
-    .part_labels = pr_sku_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
-static const char *pr_price_parts[]  = { "base_price", "cost_price", "tax_rate" };
-static const char *pr_price_labels[] = { "Base", "Cost", "Tax %" };
-static const MD_Cell pr_price_cell = {
-    .parts       = pr_price_parts,
-    .part_labels = pr_price_labels,
-    .part_count  = 3,
-    .style       = "stack",
-};
-
 MD_Column md_products_columns[] = {
-    { .name = "name", .label = "Product", .type = COL_TYPE_TEXT,
-      .nullable = false },
-    { .name = "sku", .label = "Codes", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &pr_sku_cell },
-    { .name = "base_price", .label = "Prices", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &pr_price_cell },
-    { .name = "category_id", .label = "Category", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "categories", .fk_label = "name" },
-    { .name = "product_type_dict_id", .label = "Type",
-      .type = COL_TYPE_FK_SELECT, .nullable = true,
-      .fk_table = "dictionaries", .fk_label = "label",
-      .fk_where = "category = 'PRODUCT_TYPE'" },
+    MD_FIELD("name", "Product Name", COL_TYPE_TEXT, .nullable = false),
+    MD_STACK("Codes",
+        MD_FIELD("sku", "SKU", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("barcode", "Barcode", COL_TYPE_TEXT, .nullable = true)
+    ),
+    MD_STACK("Prices",
+        MD_FIELD("base_price", "Base Price", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("cost_price", "Cost Price", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("tax_rate", "Tax Rate", COL_TYPE_NUM, .nullable = false)
+    ),
+    MD_FK("category_id", "Category", "categories", "name", .nullable = false),
+    MD_FK("product_type_dict_id", "Type", "dictionaries", "label",
+          .fk_where = "category = 'PRODUCT_TYPE'", .nullable = true),
 };
 const size_t md_products_columns_count = ARRAY_LEN(md_products_columns);
 
@@ -52,10 +35,15 @@ const size_t md_products_columns_count = ARRAY_LEN(md_products_columns);
 MD_Column md_products_child_columns[] = {
     { .name = "name", .label = "Product", .type = COL_TYPE_TEXT,
       .nullable = false },
-    { .name = "sku", .label = "Codes", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &pr_sku_cell },
-    { .name = "base_price", .label = "Prices", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &pr_price_cell },
+    MD_STACK("Codes",
+        MD_FIELD("sku", "SKU", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("barcode", "Barcode", COL_TYPE_TEXT, .nullable = true)
+    ),
+    MD_STACK("Prices",
+        MD_FIELD("base_price", "Base Price", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("cost_price", "Cost Price", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("tax_rate", "Tax Rate", COL_TYPE_NUM, .nullable = false)
+    ),
 };
 const size_t md_products_child_columns_count = ARRAY_LEN(md_products_child_columns);
 

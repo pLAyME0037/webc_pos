@@ -168,7 +168,7 @@ static const char *const q_counts[SQL_LANG_COUNT] = {
 #define Q_RECENT(WHERE) \
     "SELECT o.order_number, o.created_at, o.total_amount, " \
            "o.order_status_dict_id, COALESCE(d.label, ''), " \
-           "COALESCE(s.first_name, ''), COALESCE(s.last_name, '') " \
+           "COALESCE((SELECT u.name FROM users u WHERE u.id = s.user_id), '') " \
     "FROM orders o " \
     "LEFT JOIN dictionaries d ON d.id = o.order_status_dict_id " \
                             "AND d.deleted_at IS NULL " \
@@ -597,11 +597,7 @@ void dashboard_load(Dashboard_Data *ws, const Auth_User *au) {
                          (v && v[0]) ? v : (sid ? sid : "-"));
                 o->tone_cls = order_tone(sid);
                 const char *f = sql_col_text(&stmt, 5);
-                const char *l = sql_col_text(&stmt, 6);
-                if (f && f[0] && l && l[0])
-                    snprintf(o->who, sizeof(o->who), "%s %s", f, l);
-                else if (f && f[0]) snprintf(o->who, sizeof(o->who), "%s", f);
-                else if (l && l[0]) snprintf(o->who, sizeof(o->who), "%s", l);
+                if (f && f[0]) snprintf(o->who, sizeof(o->who), "%s", f);
                 else snprintf(o->who, sizeof(o->who), "-");
             }
         }

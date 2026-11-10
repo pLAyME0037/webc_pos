@@ -110,26 +110,27 @@ INSERT IGNORE INTO customers (id, customer_type_dict_id, loyalty_points, metadat
 --    what feeds customer_name in the sales report view). All old enough
 --    to stay below demo rows in created_at DESC lists.
 -- ---------------------------------------------------------------------------
-INSERT IGNORE INTO users (id, org_unit_id, name, username, email, phone,
+INSERT IGNORE INTO users (id, org_unit_id, first_name, last_name, username, email, phone,
                              password_hash, user_type_dict_id, customer_id,
                              village_id, status, created_at) VALUES
-    ('sd-user-1', 'sd-ou-phm', 'សុខ ដារា',   'sd.staff1', 'sd.staff1@pos.kh', '0121000001', '', 'ADMIN',   NULL, '7426', 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
-    ('sd-user-2', 'sd-ou-phm', 'ចាន់ថា ស្រីពៅ', 'sd.staff2', 'sd.staff2@pos.kh', '0121000002', '', 'ADMIN',   NULL, '941', 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
-    ('sd-user-3', 'sd-ou-phm', 'វណ្ណារ៉ា សុខ', 'sd.staff3', 'sd.staff3@pos.kh', '0121000003', '', 'ADMIN',   NULL, '10433', 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
-    ('sd-user-4', NULL,        'ឡាច វិចិត្រ',   'sd.cust1',  'sd.cust1@pos.kh',  '0122000001', '', 'CUSTOMER', 'sd-cus-1', NULL, 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 100 DAY)),
-    ('sd-user-5', NULL,        'សែស ម៉ាលី',   'sd.cust2',  'sd.cust2@pos.kh',  '0122000002', '', 'CUSTOMER', 'sd-cus-2', NULL, 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 100 DAY)),
-    ('sd-user-6', NULL,        'រតនៈ ស្រីណែត','sd.cust3',  'sd.cust3@pos.kh',  '0122000003', '', 'CUSTOMER', 'sd-cus-3', NULL, 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 95 DAY)),
-    ('sd-user-7', NULL,        'គង់ សុផល',    'sd.cust4',  'sd.cust4@pos.kh',  '0122000004', '', 'CUSTOMER', 'sd-cus-5', NULL, 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 95 DAY)),
-    ('sd-user-8', NULL,        'ប៉ែន សុជាតា',  'sd.cust5',  'sd.cust5@pos.kh',  '0122000005', '', 'CUSTOMER', 'sd-cus-6', NULL, 'ACTIVE', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY));
+    ('sd-user-1', 'sd-ou-phm', 'សុខ',   'ដារា',   'sd.staff1', 'sd.staff1@pos.kh', '0121000001', '', 'ADMIN',   NULL, '7426', 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
+    ('sd-user-2', 'sd-ou-phm', 'ចាន់ថា', 'ស្រីពៅ', 'sd.staff2', 'sd.staff2@pos.kh', '0121000002', '', 'ADMIN',   NULL, '941', 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
+    ('sd-user-3', 'sd-ou-phm', 'វណ្ណារ៉ា', 'សុខ',   'sd.staff3', 'sd.staff3@pos.kh', '0121000003', '', 'ADMIN',   NULL, '10433', 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
+    ('sd-user-4', NULL,        'ឡាច',   'វិចិត្រ', 'sd.cust1',  'sd.cust1@pos.kh',  '0122000001', '', 'CUSTOMER', 'sd-cus-1', NULL, 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 100 DAY)),
+    ('sd-user-5', NULL,        'សែស',   'ម៉ាលី',  'sd.cust2',  'sd.cust2@pos.kh',  '0122000002', '', 'CUSTOMER', 'sd-cus-2', NULL, 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 100 DAY)),
+    ('sd-user-6', NULL,        'រតនៈ',  'ស្រីណែត','sd.cust3',  'sd.cust3@pos.kh',  '0122000003', '', 'CUSTOMER', 'sd-cus-3', NULL, 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 95 DAY)),
+    ('sd-user-7', NULL,        'គង់',   'សុផល',   'sd.cust4',  'sd.cust4@pos.kh',  '0122000004', '', 'CUSTOMER', 'sd-cus-5', NULL, 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 95 DAY)),
+    ('sd-user-8', NULL,        'ប៉ែន',  'សុជាតា', 'sd.cust5',  'sd.cust5@pos.kh',  '0122000005', '', 'CUSTOMER', 'sd-cus-6', NULL, 1, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY));
 
 -- ---------------------------------------------------------------------------
--- 8. Staff (tests create their own 'pos-stf-1')
+-- 8. Staff (tests create their own 'pos-stf-1') - person names live on
+--    users (staff.user_id), staff carries employment facts only.
 -- ---------------------------------------------------------------------------
 INSERT IGNORE INTO staff (id, user_id, org_unit_id, staff_code, staff_type_dict_id,
-                             first_name, last_name, phone, village_id, hire_date, created_at) VALUES
-    ('sd-stf-1', 'sd-user-1', 'sd-ou-phm', 'SD-STF-01', 'MANAGER',   'សុខ',   'ដារា',   '0121000001', '7426', '2025-01-06', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
-    ('sd-stf-2', 'sd-user-2', 'sd-ou-phm', 'SD-STF-02', 'CASHIER',   'ចាន់ថា', 'ស្រីពៅ', '0121000002', '941', '2025-03-03', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
-    ('sd-stf-3', 'sd-user-3', 'sd-ou-phm', 'SD-STF-03', 'DRIVER',    'វណ្ណារ៉ា','សុខ',    '0121000003', '10433', '2025-06-02', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY));
+                             hire_date, created_at) VALUES
+    ('sd-stf-1', 'sd-user-1', 'sd-ou-phm', 'SD-STF-01', 'MANAGER',   '2025-01-06', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
+    ('sd-stf-2', 'sd-user-2', 'sd-ou-phm', 'SD-STF-02', 'CASHIER',   '2025-03-03', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY)),
+    ('sd-stf-3', 'sd-user-3', 'sd-ou-phm', 'SD-STF-03', 'DRIVER',    '2025-06-02', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 150 DAY));
 
 -- ---------------------------------------------------------------------------
 -- 9. Roles + permissions + links (tests create their own 'pos-role-*')

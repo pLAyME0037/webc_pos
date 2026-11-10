@@ -185,7 +185,9 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY DEFAULT ((gen_random_uuid()::text)),
     org_unit_id TEXT NULL REFERENCES org_units(id) ON DELETE RESTRICT,
-    name TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    gender INT NOT NULL DEFAULT 1 CHECK (gender IN (1, 0, -1)), -- (1 = 'MALE', 0 = 'FEMALE', -1 = 'NON')
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     phone TEXT NOT NULL UNIQUE,
@@ -193,7 +195,8 @@ CREATE TABLE IF NOT EXISTS users (
     user_type_dict_id TEXT NOT NULL DEFAULT 'CUSTOMER' REFERENCES dictionaries(id) ON DELETE RESTRICT,
     customer_id TEXT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     village_id TEXT NULL REFERENCES villages(id) ON DELETE RESTRICT,
-    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
+    status INT NOT NULL DEFAULT 1 CHECK (status IN (1, 0, -1)), -- (1 = 'ACTIVE', 0 = 'INACTIVE', -1 = 'SUSPENDED')
+    name TEXT GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED, -- composed read: views, fk labels, search
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL
@@ -213,7 +216,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE users_pos (
     id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
     org_unit_id TEXT NULL REFERENCES org_units(id) ON DELETE RESTRICT,
-    name TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    gender INT NOT NULL DEFAULT 1 CHECK (gender IN (1, 0, -1)), -- (1 = 'MALE', 0 = 'FEMALE', -1 = 'NON')
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     phone TEXT NULL UNIQUE,
@@ -221,7 +226,8 @@ CREATE TABLE users_pos (
     user_type_dict_id TEXT NOT NULL DEFAULT 'CUSTOMER' REFERENCES dictionaries(id) ON DELETE RESTRICT,
     customer_id TEXT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     village_id TEXT NULL REFERENCES villages(id) ON DELETE RESTRICT,
-    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
+    status INT NOT NULL DEFAULT 1 CHECK (status IN (1, 0, -1)), -- (1 = 'ACTIVE', 0 = 'INACTIVE', -1 = 'SUSPENDED')
+    name TEXT GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED, -- composed read: views, fk labels, search
     profile_pic BYTEA NULL, -- kept from the demo schema (superset of vision)
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -231,8 +237,12 @@ CREATE TABLE users_pos (
 -- are de-duplicated here because the POS shape enforces UNIQUE: the
 -- first row by id keeps the value, later rows get '_dup<id>' in the
 -- username and '+dup<id>' before the '@' in the email.
-INSERT INTO users_pos (id, name, username, email, profile_pic, created_at, updated_at)
-SELECT src.id, src.name,
+INSERT INTO users_pos (id, first_name, last_name, username, email, profile_pic, created_at, updated_at)
+SELECT src.id,
+       CASE WHEN position(' ' in src.name) > 0
+            THEN substr(src.name, 1, position(' ' in src.name) - 1) ELSE src.name END,
+       CASE WHEN position(' ' in src.name) > 0
+            THEN substr(src.name, position(' ' in src.name) + 1) ELSE '' END,
        CASE WHEN (SELECT count(*) FROM users d WHERE d.username = src.username) > 1
                  AND src.id <> (SELECT MIN(d.id) FROM users d WHERE d.username = src.username)
             THEN src.username || '_dup' || src.id ELSE src.username END,
@@ -251,10 +261,7 @@ CREATE TABLE IF NOT EXISTS staff (
     org_unit_id TEXT NOT NULL REFERENCES org_units(id) ON DELETE RESTRICT,
     staff_code TEXT NOT NULL UNIQUE,
     staff_type_dict_id TEXT REFERENCES dictionaries(id) ON DELETE RESTRICT,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    phone TEXT,
-    village_id TEXT NOT NULL REFERENCES villages(id) ON DELETE RESTRICT,
+    salary NUMERIC NULL,
     hire_date TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -552,7 +559,7 @@ SELECT
     o.created_at AS order_date,
     ou.ou_name AS branch_name,
     cu.name AS customer_name,
-    st.first_name || ' ' || st.last_name AS cashier_name,
+    su.name AS cashier_name,
     o.subtotal,
     o.discount_amount,
     o.tax_amount,
@@ -565,6 +572,7 @@ SELECT
 FROM orders o
 JOIN org_units ou ON o.org_unit_id = ou.id
 JOIN staff st ON o.staff_id = st.id
+JOIN users su ON su.id = st.user_id
 LEFT JOIN (SELECT customer_id, MIN(name) AS name FROM users
            WHERE customer_id IS NOT NULL AND deleted_at IS NULL
            GROUP BY customer_id) cu ON cu.customer_id = o.customer_id

@@ -16,130 +16,106 @@
 // pages do not move. 
 // =========================================================================
 
-// Avatar cell: picture + name + username + account status. Status prints
-// as a colored line and rings the picture (ACTIVE blue / INACTIVE peach /
-// SUSPENDED red); part_choices[3] makes its form input a <select>.
-// The activity cell is display-only (computed): human joined/edited
-// stamps plus a DELETED marker in the trash view.
-static const char *usr_parts[]  = { "profile_pic", "name", "username", "status" };
-static const char *usr_labels[] = { "Picture URL", "Name", "Username", "Status" };
-static const char *usr_status_opts[] = { "ACTIVE", "INACTIVE", "SUSPENDED", NULL };
-static const char **usr_cell_choices[] = { NULL, NULL, NULL, usr_status_opts };
-static const MD_Cell usr_cell = {
-    .parts        = usr_parts,
-    .part_labels  = usr_labels,
-    .part_count   = 4,
-    .style        = "avatar",
-    .part_choices = usr_cell_choices,
-};
-static const char *usr_ts_fields[] = { "created_at", "updated_at", "deleted_at" };
-static const char *usr_ts_labels[] = { "Joined", "Edited", "Deleted" };
-static const MD_Cell usr_ts_cell = {
-    .parts       = usr_ts_fields,
-    .part_labels = usr_ts_labels,
-    .part_count  = 3,
-    .style       = "activity",
-};
-
+// Avatar/status/activity shapes live inline in md_pos_users_columns
+// below (MD_AVATAR/MD_STACK/MD_ACTIVITY): picture + first/last name +
+// username + account status, type & gender stack, and the display-only
+// activity stamps. Status/gender are INTEGER in storage (0003) - each
+// sub-column's read_sql maps them back to the label the form posts.
 MD_Column md_pos_users_columns[] = {
-    {
-        .name        = "profile_pic",
-        .label       = "User",
-        .type        = COL_TYPE_TEXT,
-        .nullable    = true,
-        .cell        = &usr_cell
-    }, {
-        .name        = "phone",
-        .label       = "Phone",
-        .type        = COL_TYPE_TEXT,
-        .nullable    = false
-    }, {
-        .name        = "email",
-        .label       = "Email",
-        .type        = COL_TYPE_TEXT,
-        .nullable    = true
-    }, {
-        .name        = "user_type_dict_id",
-        .label       = "Type",
-        .type        = COL_TYPE_FK_SELECT,
-        .nullable    = true,
-        .fk_table    = "dictionaries",
-        .fk_label    = "label",
-        .fk_where    = "category = 'USER_TYPE'"
-    }, {
-        .name        = "org_unit_id",
-        .label       = "Org",
-        .type        = COL_TYPE_FK_SELECT,
-        .nullable    = true,
-        .fk_table    = "org_units",
-        .fk_label    = "ou_name"
-    }, {
-        .name        = "village_id",
-        .label       = "Village",
-        .type        = COL_TYPE_FK_SELECT,
-        .nullable    = true,
-        .fk_table    = "villages",
-        .fk_label    = "name_kh",
-        .fk_cascade  = 1
-    }, {
-        .name        = "customer_id",
-        .label       = "Customer",
-        .type        = COL_TYPE_FK_SELECT,
-        .nullable    = true,
-        .fk_table    = "customers",
-        .fk_label    = "COALESCE((SELECT name FROM users WHERE users.customer_id "
-                       "= customers.id AND users.deleted_at IS NULL LIMIT 1), id)"
-    }, {
-        .name        = "created_at",
-        .label       = "Activity",
-        .type        = COL_TYPE_DATE,
-        .nullable    = false,
-        .computed    = 1,
-        .cell        = &usr_ts_cell
-    },
+    MD_AVATAR("User",
+        MD_FIELD("profile_pic", "Photo", COL_TYPE_IMG, .nullable = true),
+        MD_FIELD("first_name", "First Name", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("last_name", "Last Name", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("username", "Username", COL_TYPE_TEXT, .nullable = false),
+        MD_CHOICE("status", "Status", ((const char*[]) {
+            "ACTIVE",
+            "INACTIVE",
+            "SUSPENDED",
+            NULL
+        }),
+                  .read_sql = "CASE status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'SUSPENDED' END")
+    ),
+    MD_STACK("Type & Gender",
+        MD_CHOICE("gender", "Gender", ((const char*[]) {
+            "MALE",
+            "FEMALE",
+            "NON",
+            NULL
+        }),
+                  .read_sql = "CASE gender WHEN 1 THEN 'MALE' WHEN 0 THEN 'FEMALE' ELSE 'NON' END"),
+        MD_FK("user_type_dict_id", "Type", "dictionaries", "label",
+              .fk_where = "category = 'USER_TYPE'", .nullable = false)
+    ),
+    MD_FIELD("phone", "Phone", COL_TYPE_TEXT, .nullable = false),
+    MD_FIELD("email", "Email", COL_TYPE_TEXT, .nullable = true),
+    MD_FK("org_unit_id", "Branch", "org_units", "ou_name", .nullable = true),
+    MD_FK("customer_id", "Customer", "customers", "id", .nullable = true),
+    MD_FK("village_id", "Village", "villages", "name_kh", .nullable = true, .fk_cascade = 1),
+    MD_ACTIVITY("Activity",
+        MD_FIELD("created_at", "Joined", COL_TYPE_DATE),
+        MD_FIELD("updated_at", "Edited", COL_TYPE_DATE),
+        MD_FIELD("deleted_at", "Deleted", COL_TYPE_DATE)
+    ),
 };
 const size_t md_pos_users_columns_count = ARRAY_LEN(md_pos_users_columns);
 
 static bool create_pos_user(db_t *db, String_View *fields, size_t count) {
-    if (count < 10) return false;
+    if (count < 12) return false;
     // Plain INSERT (not OR REPLACE): a colliding username/phone must fail
     // loudly instead of silently dropping the other row. Field order is
-    // usr_fields {phone, name, username, email, profile_pic} then
-    // usr_opt_fields {status, customer_id, org_unit_id, village_id,
-    // user_type_dict_id}. phone (values[0]) must be non-empty - the
-    // SERVE_* 400 guard enforces it. email/profile_pic/fks store NULL
-    // when blank (0007: email is optional, only filled on deliberate
-    // account creation); status/user_type fall back to their defaults.
+    // usr_fields {phone, first_name, last_name, username, email} then
+    // usr_opt_fields {profile_pic, status, customer_id, org_unit_id,
+    // village_id, user_type_dict_id, gender}. phone (values[0]) must be
+    // non-empty - the SERVE_* 400 guard enforces it. email/profile_pic/
+    // fks store NULL when blank (0007: email is optional, only filled on
+    // deliberate account creation); status/gender are the 0003 INTEGER
+    // enums: the form posts the label, the CASE stores 1/0/-1, and an
+    // absent key falls back to the column default (1 = ACTIVE / MALE).
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "INSERT INTO users "
-                         "(phone, name, username, email, profile_pic, "
-                          "status, customer_id, org_unit_id, village_id, "
-                          "user_type_dict_id) "
-                         "VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), "
-                          "COALESCE(NULLIF(?, ''), 'ACTIVE'), "
+                         "(phone, first_name, last_name, username, email, "
+                          "profile_pic, status, customer_id, org_unit_id, "
+                          "village_id, user_type_dict_id, gender) "
+                         "VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), "
+                          "CASE NULLIF(?, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE 1 END, "
                           "NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), "
-                          "COALESCE(NULLIF(?, ''), 'CUSTOMER'));",
+                          "COALESCE(NULLIF(?, ''), 'CUSTOMER'), "
+                          "CASE NULLIF(?, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE 1 END);",
         [SQL_MYSQL]    = "INSERT INTO users "
-                         "(phone, name, username, email, profile_pic, "
-                          "status, customer_id, org_unit_id, village_id, "
-                          "user_type_dict_id) "
-                         "VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), "
-                          "COALESCE(NULLIF(?, ''), 'ACTIVE'), "
+                         "(phone, first_name, last_name, username, email, "
+                          "profile_pic, status, customer_id, org_unit_id, "
+                          "village_id, user_type_dict_id, gender) "
+                         "VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), "
+                          "CASE NULLIF(?, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE 1 END, "
                           "NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), "
-                          "COALESCE(NULLIF(?, ''), 'CUSTOMER'));",
+                          "COALESCE(NULLIF(?, ''), 'CUSTOMER'), "
+                          "CASE NULLIF(?, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE 1 END);",
         [SQL_POSTGRES] = "INSERT INTO users "
-                         "(phone, name, username, email, profile_pic, "
-                          "status, customer_id, org_unit_id, village_id, "
-                          "user_type_dict_id) "
-                         "VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), "
-                          "COALESCE(NULLIF($6, ''), 'ACTIVE'), "
-                          "NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), "
-                          "COALESCE(NULLIF($10, ''), 'CUSTOMER'));",
+                         "(phone, first_name, last_name, username, email, "
+                          "profile_pic, status, customer_id, org_unit_id, "
+                          "village_id, user_type_dict_id, gender) "
+                         "VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), "
+                          "CASE NULLIF($7, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE 1 END, "
+                          "NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), "
+                          "COALESCE(NULLIF($11, ''), 'CUSTOMER'), "
+                          "CASE NULLIF($12, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE 1 END);",
     };
     sql_stmt stmt = {0};
     bool result = true;
     if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    for (int i = 1; i <= 10; ++i) {
+    for (int i = 1; i <= 12; ++i) {
         if (!sql_bind(&stmt, i, SQL_SV(fields[i - 1]))) return_defer(false);
     }
     if (!sql_final_step(&stmt)) return_defer(false);
@@ -151,48 +127,68 @@ defer:
 static bool update_pos_user(db_t *db, String_View *fields, size_t count,
                             String_View id)
 {
-    if (count < 10) return false;
+    if (count < 12) return false;
     // Empty phone/profile_pic/status/fks keep the stored one (same
     // COALESCE rule as /users): a child edit form carries only the shared
     // columns, its fk rides the query string, while a master edit sends
     // both. email is the one contact an edit may clear - it stores NULL
     // (0007: optional, only filled on deliberate account creation).
+    // status/gender post their labels; the CASE maps back to the stored
+    // 1/0/-1 and an empty key keeps the stored value.
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "UPDATE users SET phone = COALESCE(NULLIF(?, ''), phone), "
-                         "name = ?, username = ?, email = NULLIF(?, ''), "
+                         "first_name = ?, last_name = ?, username = ?, "
+                         "email = NULLIF(?, ''), "
                          "profile_pic = COALESCE(NULLIF(?, ''), profile_pic), "
-                         "status = COALESCE(NULLIF(?, ''), status), "
+                         "status = CASE NULLIF(?, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE status END, "
                          "customer_id = COALESCE(NULLIF(?, ''), customer_id), "
                          "org_unit_id = COALESCE(NULLIF(?, ''), org_unit_id), "
                          "village_id = COALESCE(NULLIF(?, ''), village_id), "
-                         "user_type_dict_id = COALESCE(NULLIF(?, ''), user_type_dict_id) "
+                         "user_type_dict_id = COALESCE(NULLIF(?, ''), user_type_dict_id), "
+                         "gender = CASE NULLIF(?, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE gender END "
                          "WHERE id = ?;",
         [SQL_MYSQL]    = "UPDATE users SET phone = COALESCE(NULLIF(?, ''), phone), "
-                         "name = ?, username = ?, email = NULLIF(?, ''), "
+                         "first_name = ?, last_name = ?, username = ?, "
+                         "email = NULLIF(?, ''), "
                          "profile_pic = COALESCE(NULLIF(?, ''), profile_pic), "
-                         "status = COALESCE(NULLIF(?, ''), status), "
+                         "status = CASE NULLIF(?, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE status END, "
                          "customer_id = COALESCE(NULLIF(?, ''), customer_id), "
                          "org_unit_id = COALESCE(NULLIF(?, ''), org_unit_id), "
                          "village_id = COALESCE(NULLIF(?, ''), village_id), "
-                         "user_type_dict_id = COALESCE(NULLIF(?, ''), user_type_dict_id) "
+                         "user_type_dict_id = COALESCE(NULLIF(?, ''), user_type_dict_id), "
+                         "gender = CASE NULLIF(?, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE gender END "
                          "WHERE id = ?;",
         [SQL_POSTGRES] = "UPDATE users SET phone = COALESCE(NULLIF($1, ''), phone), "
-                         "name = $2, username = $3, email = NULLIF($4, ''), "
-                         "profile_pic = COALESCE(NULLIF($5, ''), profile_pic), "
-                         "status = COALESCE(NULLIF($6, ''), status), "
-                         "customer_id = COALESCE(NULLIF($7, ''), customer_id), "
-                         "org_unit_id = COALESCE(NULLIF($8, ''), org_unit_id), "
-                         "village_id = COALESCE(NULLIF($9, ''), village_id), "
-                         "user_type_dict_id = COALESCE(NULLIF($10, ''), user_type_dict_id) "
-                         "WHERE id = $11;",
+                         "first_name = $2, last_name = $3, username = $4, "
+                         "email = NULLIF($5, ''), "
+                         "profile_pic = COALESCE(NULLIF($6, ''), profile_pic), "
+                         "status = CASE NULLIF($7, '') WHEN 'ACTIVE' THEN 1 "
+                          "WHEN 'INACTIVE' THEN 0 WHEN 'SUSPENDED' THEN -1 "
+                          "ELSE status END, "
+                         "customer_id = COALESCE(NULLIF($8, ''), customer_id), "
+                         "org_unit_id = COALESCE(NULLIF($9, ''), org_unit_id), "
+                         "village_id = COALESCE(NULLIF($10, ''), village_id), "
+                         "user_type_dict_id = COALESCE(NULLIF($11, ''), user_type_dict_id), "
+                         "gender = CASE NULLIF($12, '') WHEN 'MALE' THEN 1 "
+                          "WHEN 'FEMALE' THEN 0 WHEN 'NON' THEN -1 "
+                          "ELSE gender END "
+                         "WHERE id = $13;",
     };
     sql_stmt stmt = {0};
     bool result = true;
     if (!sql_prepare(db, q[db->lang], &stmt))    return_defer(false);
-    for (int i = 1; i <= 10; ++i) {
+    for (int i = 1; i <= 12; ++i) {
         if (!sql_bind(&stmt, i, SQL_SV(fields[i - 1]))) return_defer(false);
     }
-    if (!sql_bind(&stmt, 11, SQL_SV(id)))        return_defer(false);
+    if (!sql_bind(&stmt, 13, SQL_SV(id)))        return_defer(false);
     if (!sql_final_step(&stmt))                  return_defer(false);
 defer:
     sql_finalize(&stmt);
@@ -285,14 +281,15 @@ void serve_pos_users(Serve_Context *sc) {
 // documented. Optional keys ride body first, query second - the
 // /pos/customers and /pos/org child tabs pass their fk in the query
 // string; status/location/user_type default when absent (see SQL above).
-// Bind order stays phone,name,username,email,profile_pic,status,... :
-// the opt block appends in list order, so profile_pic must lead it.
+// Bind order stays phone,first_name,last_name,username,email,profile_pic,
+// status,... : the opt block appends in list order, so profile_pic must
+// lead it.
 static const char *usr_fields[] = {
-    "phone", "name", "username", "email",
+    "phone", "first_name", "last_name", "username", "email",
 };
 static const char *usr_opt_fields[] = {
     "profile_pic", "status", "customer_id", "org_unit_id", "village_id",
-    "user_type_dict_id",
+    "user_type_dict_id", "gender",
 };
 SERVE_CREATE(pos_users, pos_user, usr_fields, usr_opt_fields)
 SERVE_UPDATE(pos_users, pos_user, usr_fields, usr_opt_fields)

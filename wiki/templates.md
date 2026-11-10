@@ -22,14 +22,14 @@ Two delimiters:
 
 | | |
 |---|---|
-| `({` | open a C island |
-| `})` | close it |
+| `<c>` | open a C island |
+| `</c>` | close it |
 
 Everything outside an island is literal HTML. Everything inside is C, copied
 verbatim.
 
 ```
-Build time: ({ STR(WEBC_BUILD_TIME); })
+Build time: <c> STR(WEBC_BUILD_TIME); </c>
 ```
 
 There is no escaping, no `{{ }}`, no filters and no expression grammar. If you
@@ -42,16 +42,22 @@ checked by the compiler like any other code.
 The whole compiler is 38 lines and works by alternating `sv_chop_by_sv`:
 
 ```c
-int c_code_mode = 0;
-while (tmplat.count) {
-    String_View token = sv_chop_by_sv(&tmplat, c_code_mode ? "})" : "({");
-    if (c_code_mode) compile_c_code(token);     // printed verbatim
-    else             compile_byte_array(token); // → OUT("\x..\x..", N);
-    c_code_mode = !c_code_mode;
-}
+#define OPEN_C_TAG "<c>"
+#define CLOSE_C_TAG "</c>"
+
+    int c_code_mode = 0;
+    while (tmplat.count) {
+        String_View tag;
+        if (c_code_mode) { tag = sv_from_cstr(CLOSE_C_TAG); }
+        else { tag = sv_from_cstr(OPEN_C_TAG); }
+        String_View token = sv_chop_by_sv(&tmplat, &tag);
+        if (c_code_mode) compile_c_code(token);
+        else compile_byte_array(token);
+        c_code_mode = !c_code_mode;
+    }
 ```
 
-It starts in HTML mode, so the first token (text before the first `({`) is
+It starts in HTML mode, so the first token (text before the first `<c>`) is
 treated as literal HTML. Each token flips the mode.
 
 `compile_byte_array` writes the literal as a hex-escaped `OUT(...)` call:
@@ -138,7 +144,7 @@ them — same mechanism, different binding.
     </h2>
     ...
         <p class="mt-2 text-sm ...">
-            Build time: ({ STR(WEBC_BUILD_TIME); })
+            Build time: <c> STR(WEBC_BUILD_TIME); </c>
         </p>
     ...
 </div>
@@ -157,24 +163,41 @@ which, once `render_version_page` compiles, is just three calls in order.
 A richer island — a loop, from `display/user.h.tt`:
 
 ```
-({ for (size_t i = 0; i < users.count; ++i) { })
+<c> for (size_t i = 0; i < users.count; ++i) { </c>
 <tr class="hover:bg-gray-50 ...">
     <td class="px-6 py-4 ...">
-        ({ STR(users.items[i].id) })
+        <c> STR(users.items[i].id) </c>
     </td>
 </tr>
-({ } })
+<c> } </c>
 ```
 
 `users` is a local in the enclosing function. The generated header can see it
 because it is textually inside the function — there is no context object, no
 symbol table and no lookup at runtime.
 
+## Composite Sub-Columns
+
+Composite columns combine multiple table columns into a single `<td>` cell.
+Instead of parallel arrays, a composite column is an `MD_Column` with child sub-columns (`subcols` array).
+
+Construct composite columns with Pattern 2 macros:
+- `MD_STACK(label, ...)`: vertical stack of sub-columns.
+- `MD_AVATAR(label, ...)`: photo upload/initials, names, username, status.
+- `MD_ACTIVITY(label, ...)`: created, updated, deleted timestamps.
+
+Sub-columns inside a composite column support:
+- `MD_FIELD(name, label, type, ...)`: text, number, date, or image fields.
+- `MD_FK(name, label, table, where, ...)`: foreign key dropdowns with dynamic options.
+- `MD_CHOICE(name, label, choices, ...)`: static dropdown lists.
+
+Sub-columns define their own `.nullable` flag. Form generators render `<select>` or `<input>` with exact `required` attributes per sub-column.
+
 ## Fragment mode
 
 `SERVE_READ` supports `?fragment=all`: the handler skips `PAGE_BEGIN`/
 `PAGE_END` and emits only the body region. Templates are written with
-`({ if (!fragment) { })` guards around shell markup so the same file serves
+`<c> if (!fragment) { </c>` guards around shell markup so the same file serves
 both the full page and the bare pagination store that
 `js/PaginationSwitcher.js` fetches to flip pages client-side.
 

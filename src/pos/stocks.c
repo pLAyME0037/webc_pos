@@ -14,15 +14,6 @@
 // child of /pos/products (product_id rides the query string there).
 // =========================================================================
 
-static const char *stk_minmax_parts[]  = { "min_threshold", "max_threshold" };
-static const char *stk_minmax_labels[] = { "Min", "Max" };
-static const MD_Cell stk_minmax_cell = {
-    .parts       = stk_minmax_parts,
-    .part_labels = stk_minmax_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
 // Child tab shape for stock_ledger (view-local): a movement log entry.
 static MD_Column md_pos_ledger_columns[] = {
     { .name = "reference_type", .label = "Type", .type = COL_TYPE_TEXT,
@@ -37,17 +28,17 @@ static MD_Column md_pos_ledger_columns[] = {
 static const size_t md_pos_ledger_columns_count = ARRAY_LEN(md_pos_ledger_columns);
 
 static MD_Column md_stocks_columns[] = {
-    { .name = "product_id", .label = "Product", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "products", .fk_label = "name" },
-    { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
-    { .name = "variant_id", .label = "Variant", .type = COL_TYPE_FK_SELECT,
-      .nullable = true, .fk_table = "product_variants",
-      .fk_label = "variant_name" },
-    { .name = "quantity", .label = "Qty", .type = COL_TYPE_NUM,
-      .nullable = false },
-    { .name = "min_threshold", .label = "Range", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &stk_minmax_cell },
+    MD_FK("product_id", "Product", "products", "name",
+          .nullable = false),
+    MD_FK("org_unit_id", "Location", "org_units", "ou_name",
+          .nullable = false),
+    MD_FK("variant_id", "Variant", "product_variants", "variant_name",
+          .nullable = true),
+    MD_FIELD("quantity", "In Stock", COL_TYPE_NUM, .nullable = false),
+    MD_STACK("Thresholds",
+        MD_FIELD("min_threshold", "Min Alert", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("max_threshold", "Max Stock", COL_TYPE_NUM, .nullable = false)
+    ),
 };
 static const size_t md_stocks_columns_count = ARRAY_LEN(md_stocks_columns);
 

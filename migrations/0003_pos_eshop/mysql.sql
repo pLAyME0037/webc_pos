@@ -190,7 +190,9 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) PRIMARY KEY DEFAULT ((UUID())),
     org_unit_id VARCHAR(36) NULL,
-    name TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    gender INT NOT NULL DEFAULT 1 CHECK (gender IN (1, 0, -1)), -- (1 = 'MALE', 0 = 'FEMALE', -1 = 'NON')
     username VARCHAR(191) NOT NULL UNIQUE,
     email VARCHAR(191) NOT NULL UNIQUE,
     phone VARCHAR(64) NOT NULL UNIQUE,
@@ -198,7 +200,8 @@ CREATE TABLE IF NOT EXISTS users (
     user_type_dict_id VARCHAR(36) NOT NULL DEFAULT 'CUSTOMER',
     customer_id VARCHAR(36) NULL,
     village_id VARCHAR(36) NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
+    status INT NOT NULL DEFAULT 1 CHECK (status IN (1, 0, -1)), -- (1 = 'ACTIVE', 0 = 'INACTIVE', -1 = 'SUSPENDED')
+    name VARCHAR(255) GENERATED ALWAYS AS (TRIM(CONCAT(first_name, ' ', last_name))) STORED, -- composed read: views, fk labels, search
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME NULL
@@ -218,7 +221,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE users_pos (
     id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
     org_unit_id VARCHAR(36) NULL,
-    name TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    gender INT NOT NULL DEFAULT 1 CHECK (gender IN (1, 0, -1)), -- (1 = 'MALE', 0 = 'FEMALE', -1 = 'NON')
     username VARCHAR(191) NOT NULL UNIQUE,
     email VARCHAR(191) NOT NULL UNIQUE,
     phone VARCHAR(64) NULL UNIQUE,
@@ -226,7 +231,8 @@ CREATE TABLE users_pos (
     user_type_dict_id VARCHAR(36) NOT NULL DEFAULT 'CUSTOMER',
     customer_id VARCHAR(36) NULL,
     village_id VARCHAR(36) NULL,
-    status VARCHAR(36) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
+    status INT NOT NULL DEFAULT 1 CHECK (status IN (1, 0, -1)), -- (1 = 'ACTIVE', 0 = 'INACTIVE', -1 = 'SUSPENDED')
+    name VARCHAR(255) GENERATED ALWAYS AS (TRIM(CONCAT(first_name, ' ', last_name))) STORED, -- composed read: views, fk labels, search
     profile_pic BLOB NULL, -- kept from the demo schema (superset of vision)
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -236,8 +242,12 @@ CREATE TABLE users_pos (
 -- are de-duplicated here because the POS shape enforces UNIQUE: the
 -- first row by id keeps the value, later rows get '_dup<id>' in the
 -- username and '+dup<id>' before the '@' in the email.
-INSERT IGNORE INTO users_pos (id, name, username, email, profile_pic, created_at, updated_at)
-SELECT src.id, src.name,
+INSERT IGNORE INTO users_pos (id, first_name, last_name, username, email, profile_pic, created_at, updated_at)
+SELECT src.id,
+       CASE WHEN LOCATE(' ', src.name) > 0
+            THEN SUBSTRING(src.name, 1, LOCATE(' ', src.name) - 1) ELSE src.name END,
+       CASE WHEN LOCATE(' ', src.name) > 0
+            THEN SUBSTRING(src.name, LOCATE(' ', src.name) + 1) ELSE '' END,
        CASE WHEN (SELECT count(*) FROM users d WHERE d.username = src.username) > 1
                  AND src.id <> (SELECT MIN(d.id) FROM users d WHERE d.username = src.username)
             THEN CONCAT(src.username, '_dup', src.id) ELSE src.username END,
@@ -256,10 +266,7 @@ CREATE TABLE IF NOT EXISTS staff (
     org_unit_id VARCHAR(36) NOT NULL,
     staff_code VARCHAR(64) NOT NULL UNIQUE,
     staff_type_dict_id VARCHAR(36),
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    phone VARCHAR(64),
-    village_id VARCHAR(36) NOT NULL,
+    salary NUMERIC NULL,
     hire_date TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -557,7 +564,7 @@ SELECT
     o.created_at AS order_date,
     ou.ou_name AS branch_name,
     cu.name AS customer_name,
-    CONCAT(st.first_name, ' ', st.last_name) AS cashier_name,
+    su.name AS cashier_name,
     o.subtotal,
     o.discount_amount,
     o.tax_amount,
@@ -570,6 +577,7 @@ SELECT
 FROM orders o
 JOIN org_units ou ON o.org_unit_id = ou.id
 JOIN staff st ON o.staff_id = st.id
+JOIN users su ON su.id = st.user_id
 LEFT JOIN (SELECT customer_id, MIN(name) AS name FROM users
            WHERE customer_id IS NOT NULL AND deleted_at IS NULL
            GROUP BY customer_id) cu ON cu.customer_id = o.customer_id

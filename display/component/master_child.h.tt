@@ -85,49 +85,66 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <c> for (size_t fi = 0; fi < form_cols.count; ++fi) { </c>
                 <c> if (!form_cols.items[fi].col->computed) { </c>
-                <c> if (form_cols.items[fi].col->cell) { </c>
-                <div>
-                    <c> for (size_t pi = 0; pi < form_cols.items[fi].col->cell->part_count; ++pi) { </c>
-                        <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">
-                            <c> ESCAPED(md_cell_part_label(form_cols.items[fi].col->cell, pi)); </c>
-                        </label>
-                         <c> if (strcmp(form_cols.items[fi].col->cell->style, "avatar") == 0 && pi == 0) { </c>
-                         <div class="relative flex items-center gap-2" data-img-upload>
-                            <div class="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
-                                <svg data-img-placeholder class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                <img data-img-preview alt="" class="hidden absolute inset-0 w-full h-full object-cover">
-                            </div>
-                            <div class="flex flex-col gap-0.5 items-start min-w-0">
-                                <label class="relative inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                    Choose
-                                    <input name="<c> ESCAPED(form_cols.items[fi].col->cell->parts[pi]); </c>"
-                                           type="file"
-                                           accept="image/png,image/jpeg,image/gif,image/webp"
-                                           class="hidden" data-img-input>
-                                </label>
-                                <div class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                                    <button type="button" data-img-crop class="hidden px-1.5 py-0.5 text-[11px] border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">Crop</button>
-                                    <span data-img-name class="truncate max-w-[7rem]">no file</span>
+                <c> if (form_cols.items[fi].col->subcols != NULL && form_cols.items[fi].col->subcol_count > 0) { </c>
+                <div class="flex flex-col gap-2">
+                    <c> for (size_t pi = 0; pi < form_cols.items[fi].col->subcol_count; ++pi) {
+                            MD_Column *scol = &form_cols.items[fi].col->subcols[pi]; </c>
+                        <div>
+                            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">
+                                <c> ESCAPED(scol->label); </c>
+                            </label>
+                            <c> if (scol->type == COL_TYPE_IMG) { </c>
+                            <div class="relative flex items-center gap-2" data-img-upload>
+                                <div class="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
+                                    <svg data-img-placeholder class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                    <img data-img-preview alt="" class="hidden absolute inset-0 w-full h-full object-cover">
+                                </div>
+                                <div class="flex flex-col gap-0.5 items-start min-w-0">
+                                    <label class="relative inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                        Choose
+                                        <input name="<c> ESCAPED(scol->name); </c>"
+                                               type="file"
+                                               accept="image/png,image/jpeg,image/gif,image/webp"
+                                               class="hidden" data-img-input>
+                                    </label>
+                                    <div class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                                        <button type="button" data-img-crop class="hidden px-1.5 py-0.5 text-[11px] border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">Crop</button>
+                                        <span data-img-name class="truncate max-w-[7rem]">no file</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <c> } else if (form_cols.items[fi].col->cell->part_choices
-                               && form_cols.items[fi].col->cell->part_choices[pi]) { </c>
-                        <select name="<c> ESCAPED(form_cols.items[fi].col->cell->parts[pi]); </c>"
-                                class="w-full px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                            <c> for (size_t o = 0; form_cols.items[fi].col->cell->part_choices[pi][o]; ++o) { </c>
-                            <option value="<c> STR(form_cols.items[fi].col->cell->part_choices[pi][o]); </c>">
-                                <c> ESCAPED(form_cols.items[fi].col->cell->part_choices[pi][o]); </c>
-                            </option>
+                            <c> } else if (scol->type == COL_TYPE_FK_SELECT) { </c>
+                            <select name="<c> ESCAPED(scol->name); </c>"
+                                    <c> if (!scol->nullable) { </c>required<c> } </c>
+                                    class="w-full px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                                <c> if (scol->nullable) { </c>
+                                <option value="">None</option>
+                                <c> } </c>
+                                <c> for (size_t o = 0; o < scol->opt_count; ++o) { </c>
+                                <option value="<c> STR(scol->opt[o].id); </c>">
+                                    <c> ESCAPED(scol->opt[o].label); </c>
+                                </option>
+                                <c> } </c>
+                            </select>
+                            <c> } else if (scol->choices != NULL) { </c>
+                            <select name="<c> ESCAPED(scol->name); </c>"
+                                    class="w-full px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                                <c> for (size_t o = 0; scol->choices[o] != NULL; ++o) { </c>
+                                <option value="<c> STR(scol->choices[o]); </c>">
+                                    <c> ESCAPED(scol->choices[o]); </c>
+                                </option>
+                                <c> } </c>
+                            </select>
+                            <c> } else { </c>
+                            <input name="<c> ESCAPED(scol->name); </c>"
+                                   type="<c> if (scol->type == COL_TYPE_NUM) { </c>number<c> } else if (scol->type == COL_TYPE_DATE) { </c>date<c> } else { </c>text<c> } </c>"
+                                   <c> if (scol->type == COL_TYPE_NUM) { </c>step="any"<c> } </c>
+                                   <c> if (!scol->nullable && scol->type != COL_TYPE_DATE) { </c>required<c> } </c>
+                                   class="w-full px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
                             <c> } </c>
-                        </select>
-                        <c> } else { </c>
-                        <input name="<c> ESCAPED(form_cols.items[fi].col->cell->parts[pi]); </c>"
-                               type="text"
-                               class="w-full px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                        <c> }
-                        } </c>
+                        </div>
+                    <c> } </c>
                 </div>
                 <c> } else { </c>
                 <div>
@@ -158,10 +175,6 @@
                     <c> } else if (form_cols.items[fi].col->type == COL_TYPE_FK_SELECT) { </c>
                     <c> if (form_cols.items[fi].col->fk_cascade && geo_data) { </c>
                     <div data-geo-cascade>
-                        <!-- UI-only navigation: province -> district -> commune.
-                             These three are disabled until their parent is chosen
-                             and are NEVER posted; the form still submits exactly
-                             one field, the village_id select below. -->
                         <select data-geo="province" disabled
                                 class="w-full mb-1 px-0.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
                             <option value="">Select Province</option>
@@ -265,16 +278,15 @@
                     data-row-id="<c> STR(rows->items[ri].id); </c>">
                     <c> for (size_t ci = 0; ci < config->column_count; ++ci) { </c>
                     <td class="pl-3 py-1 text-gray-700 dark:text-gray-200">
-                        <c> if (config->columns[ci].cell) { </c>
-                            <c> STR(md_cell_render(config->columns[ci].cell,
+                        <c> if (config->columns[ci].subcols != NULL && config->columns[ci].subcol_count > 0) { </c>
+                            <c> STR(md_cell_render(&config->columns[ci],
                                    rows->items[ri].values,
                                    md_col_slot(config->columns, ci))); </c>
                         <c> } else { </c>
                             <c> ESCAPED(rows->items[ri].disp[md_col_slot(config->columns, ci)]); </c>
                         <c> } </c>
                     </td>
-                    <c> } </c>
-                    <td class="pl-3 py-1 whitespace-nowrap">
+                    <c> } </c><td class="pl-3 py-1 whitespace-nowrap">
                         <div class="flex items-center gap-1">
                             <c> if (!config->read_only   &&
                                     !config->create_only &&
@@ -352,20 +364,25 @@
                           class="flex flex-wrap gap-3 items-end">
                     <c> for (size_t ci = 0; ci < config->column_count; ++ci) { </c>
                         <c> if (config->columns[ci].computed) { </c>
-                        <c> } else if (config->columns[ci].cell) { </c>
+                        <c> } else if (config->columns[ci].subcols != NULL && config->columns[ci].subcol_count > 0) { </c>
                         <div class="flex flex-col gap-1 min-w-35">
-                            <c> for (size_t pi = 0; pi < config->columns[ci].cell->part_count; ++pi) { </c>
+                            <c> for (size_t pi = 0; pi < config->columns[ci].subcol_count; ++pi) {
+                                    MD_Column *scol = &config->columns[ci].subcols[pi];
+                                    size_t val_idx = md_col_slot(config->columns, ci) + pi;
+                                    const char *cur_val = rows->items[ri].values[val_idx];
+                            </c>
                             <label class="text-sm text-gray-500 dark:text-gray-400">
-                                <c> ESCAPED(md_cell_part_label(config->columns[ci].cell, pi)); </c>
+                                <c> ESCAPED(scol->label); </c>
                             </label>
-                            <c> if (strcmp(config->columns[ci].cell->style, "avatar") == 0 && pi == 0) {
-                                    const char *cur_img = rows->items[ri].values[md_col_slot(config->columns, ci) + pi];
-                                    bool has_img = cur_img && cur_img[0]; </c>
+                            <c> if (scol->type == COL_TYPE_IMG) {
+                                    bool has_img = false;
+                                    if (cur_val != NULL && cur_val[0] != '\0') has_img = true;
+                            </c>
                             <div class="flex items-center gap-2" data-img-upload>
                                 <div class="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
                                     <svg data-img-placeholder class="w-5 h-5 text-gray-400 <c> if (has_img) { </c>hidden<c> } </c>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                     <img data-img-preview alt=""
-                                         <c> if (has_img) { </c>src="<c> ESCAPED(cur_img); </c>"<c> } </c>
+                                         <c> if (has_img) { </c>src="<c> ESCAPED(cur_val); </c>"<c> } </c>
                                          class="<c> if (!has_img) { </c>hidden <c> } </c>absolute inset-0 w-full h-full object-cover">
                                 </div>
                                 <div class="flex flex-col gap-0.5 items-start min-w-0">
@@ -373,7 +390,7 @@
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                         Choose
                                         <input form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
-                                               name="<c> ESCAPED(config->columns[ci].cell->parts[pi]); </c>"
+                                               name="<c> ESCAPED(scol->name); </c>"
                                                type="file" 
                                                accept="image/png,image/jpeg,image/gif,image/webp"
                                                class="hidden" data-img-input>
@@ -386,27 +403,42 @@
                                     </div>
                                 </div>
                             </div>
-                            <c> } else if (config->columns[ci].cell->part_choices
-                                   && config->columns[ci].cell->part_choices[pi]) { </c>
+                            <c> } else if (scol->type == COL_TYPE_FK_SELECT) { </c>
                             <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
-                                    name="<c> ESCAPED(config->columns[ci].cell->parts[pi]); </c>"
+                                    name="<c> ESCAPED(scol->name); </c>"
+                                    <c> if (!scol->nullable) { </c>required<c> } </c>
                                     class="px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                                <c> for (size_t o = 0;
-                                        config->columns[ci].cell->part_choices[pi][o];
-                                        ++o) { </c>
-                                <option value="<c> STR(config->columns[ci].cell->part_choices[pi][o]); </c>"
-                                        <c> if (strcmp(rows->items[ri].values[md_col_slot(config->columns, ci) + pi],
-                                                      config->columns[ci].cell->part_choices[pi][o]) == 0) { </c>
-                                        selected<c> } </c>>
-                                    <c> ESCAPED(config->columns[ci].cell->part_choices[pi][o]); </c>
+                                <c> if (scol->nullable) { </c>
+                                <option value=""
+                                    <c> if (cur_val == NULL || cur_val[0] == '\0') { </c>selected<c> } </c>>
+                                    None
                                 </option>
-                            <c> } </c>
+                                <c> } </c>
+                                <c> for (size_t o = 0; o < scol->opt_count; ++o) { </c>
+                                <option value="<c> STR(scol->opt[o].id); </c>"
+                                    <c> if (cur_val != NULL && strcmp(cur_val, scol->opt[o].id) == 0) { </c>selected<c> } </c>>
+                                    <c> ESCAPED(scol->opt[o].label); </c>
+                                </option>
+                                <c> } </c>
+                            </select>
+                            <c> } else if (scol->choices != NULL) { </c>
+                            <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
+                                    name="<c> ESCAPED(scol->name); </c>"
+                                    class="px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                                <c> for (size_t o = 0; scol->choices[o] != NULL; ++o) { </c>
+                                <option value="<c> STR(scol->choices[o]); </c>"
+                                    <c> if (cur_val != NULL && strcmp(cur_val, scol->choices[o]) == 0) { </c>selected<c> } </c>>
+                                    <c> ESCAPED(scol->choices[o]); </c>
+                                </option>
+                                <c> } </c>
                             </select>
                             <c> } else { </c>
                             <input form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
-                                   name="<c> ESCAPED(config->columns[ci].cell->parts[pi]); </c>"
-                                   type="text"
-                                   value="<c> ESCAPED(rows->items[ri].values[md_col_slot(config->columns, ci) + pi]); </c>"
+                                   name="<c> ESCAPED(scol->name); </c>"
+                                   type="<c> if (scol->type == COL_TYPE_NUM) { </c>number<c> } else if (scol->type == COL_TYPE_DATE) { </c>date<c> } else { </c>text<c> } </c>"
+                                   <c> if (scol->type == COL_TYPE_NUM) { </c>step="any"<c> } </c>
+                                   <c> if (!scol->nullable && scol->type != COL_TYPE_DATE) { </c>required<c> } </c>
+                                   value="<c> if (cur_val != NULL) { if (scol->type == COL_TYPE_DATE) { ESCAPED(md_date_input(cur_val)); } else { ESCAPED(cur_val); } } </c>"
                                    class="px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
                             <c> } </c>
                         <c> } </c>

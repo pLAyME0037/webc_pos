@@ -17,22 +17,13 @@
 
 // Event cell: plain fields only (user_id stays a flat FK column so its
 // label -- not the raw id -- renders in the row).
-static const char *cust_interaction_parts[] = {
-    "interaction_type", "raw_payload",
-};
-static const char *cust_interaction_labels[] = { "Kind", "Payload" };
-static const MD_Cell cust_interaction_cell = {
-    .parts       = cust_interaction_parts,
-    .part_labels = cust_interaction_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
 static MD_Column md_interaction_columns[] = {
     { .name = "user_id", .label = "User", .type = COL_TYPE_FK_SELECT,
       .nullable = true, .fk_table = "users", .fk_label = "name" },
-    { .name = "interaction_type", .label = "Event", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &cust_interaction_cell },
+    MD_STACK("Event",
+        MD_FIELD("interaction_type", "Kind", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("raw_payload", "Payload", COL_TYPE_TEXT, .nullable = false)
+    ),
 };
 static const size_t md_interaction_columns_count =
     ARRAY_LEN(md_interaction_columns);

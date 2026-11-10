@@ -148,7 +148,8 @@ def run_checks(t, c, env):
     # ---- users: create (multipart, no file -> '') -----------------------
     st, _, _ = c.post_multipart(
         "/users/create",
-        {"name": "MySql User", "username": "mysql_t", "email": "m@t.com",
+        {"first_name": "MySql User", "last_name": "",
+         "username": "mysql_t", "email": "m@t.com",
          "phone": "0990000110", "profile_pic": ""},
     )
     t.chk("create no file", st, 302)
@@ -168,7 +169,8 @@ def run_checks(t, c, env):
 
     st, _, _ = c.post_multipart(
         f"/users/{uid}/update",
-        {"name": "Renamed MySql", "username": "mysql_t", "email": "m2@t.com",
+        {"first_name": "Renamed MySql", "last_name": "",
+         "username": "mysql_t", "email": "m2@t.com",
          "phone": "0990000110", "profile_pic": ""},
     )
     t.chk("update", st, 302)
@@ -179,7 +181,8 @@ def run_checks(t, c, env):
     # ---- browser-style empty file part (filename="") -> NULL -----------
     st, _, _ = c.post_multipart(
         "/users/create",
-        {"name": "Raw Empty", "username": "mysql_nf", "email": "n@t.com",
+        {"first_name": "Raw Empty", "last_name": "",
+         "username": "mysql_nf", "email": "n@t.com",
          "phone": "0990000111"},
         files={"profile_pic": ("", b"", "application/octet-stream")},
     )

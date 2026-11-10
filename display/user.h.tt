@@ -3,9 +3,16 @@
       class="mb-4 flex-col gap-2 items-end bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
     <div>
         <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">
-            Name
+            First Name
         </label>
-        <input name="name" type="text" required
+        <input name="first_name" type="text" required
+               class="border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white p-1.5 rounded-xs border">
+    </div>
+    <div>
+        <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+            Last Name
+        </label>
+        <input name="last_name" type="text" required
                class="border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white p-1.5 rounded-xs border">
     </div>
     <div>

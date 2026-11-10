@@ -11,7 +11,9 @@
  * phone is required (0007: the contact every account must carry). */
 typedef struct {
     const char *id;
-    const char *name;
+    const char *name;        /* composed: generated users.name column */
+    const char *first_name;
+    const char *last_name;
     const char *username;
     const char *email;
     const char *phone;

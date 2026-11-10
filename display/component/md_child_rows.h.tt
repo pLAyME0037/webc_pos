@@ -3,10 +3,12 @@
                   <c> } </c>"
     data-row-id="<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>">
     <c>
-    for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) { </c>
+    for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) {
+        const MD_Column *ccol = &config->children[ti].columns[cci];
+    </c>
     <td class="pl-3 py-1 text-sm text-gray-700 dark:text-gray-200">
-        <c> if (config->children[ti].columns[cci].cell) { </c>
-            <c> STR(md_cell_render(config->children[ti].columns[cci].cell,
+        <c> if (ccol->subcols != NULL && ccol->subcol_count > 0) { </c>
+            <c> STR(md_cell_render(ccol,
                    rows->items[ri].children[ti].items[ci].values,
                    md_col_slot(config->children[ti].columns, cci))); </c>
         <c> } else { </c>
@@ -61,23 +63,31 @@
     </td>
 </tr>
 <tr class="md-edit-row hidden">
-    <c> for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) { </c>
+    <c> for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) {
+            const MD_Column *ccol = &config->children[ti].columns[cci];
+    </c>
         <td class="p-1">
-        <c> if (config->children[ti].columns[cci].computed) { </c>
-        <c> } else if (config->children[ti].columns[cci].cell) { </c>
+        <c> if (ccol->computed) { </c>
+        <c> } else if (ccol->subcols != NULL && ccol->subcol_count > 0) { </c>
         <div class="flex flex-col gap-1">
-            <c> for (size_t pi = 0; pi < config->children[ti].columns[cci].cell->part_count; ++pi) { </c>
+            <c> for (size_t pi = 0; pi < ccol->subcol_count; ++pi) {
+                    const MD_Column *scol = &ccol->subcols[pi];
+                    size_t s_slot = md_col_slot(config->children[ti].columns, cci) + pi;
+                    const char *cur_sval = rows->items[ri].children[ti].items[ci].values[s_slot];
+            </c>
             <label class="block text-xs text-gray-500 dark:text-gray-400">
-                <c> ESCAPED(md_cell_part_label(config->children[ti].columns[cci].cell, pi)); </c>
+                <c> ESCAPED(scol->label); </c>
             </label>
-                <c> if (strcmp(config->children[ti].columns[cci].cell->style, "avatar") == 0 && pi == 0) {
-                    const char *cur_img = rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci) + pi];
-                    bool has_img = cur_img && cur_img[0]; </c>
+                <c> if (scol->type == COL_TYPE_IMG) {
+                    bool has_img = false;
+                    if (cur_sval != NULL && cur_sval[0] != '\0') {
+                        has_img = true;
+                    } </c>
             <div class="relative flex items-center gap-2" data-img-upload>
                 <div class="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
                     <svg data-img-placeholder class="w-5 h-5 text-gray-400 <c> if (has_img) { </c>hidden<c> } </c>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     <img data-img-preview alt=""
-                         <c> if (has_img) { </c>src="<c> ESCAPED(cur_img); </c>"<c> } </c>
+                         <c> if (has_img) { </c>src="<c> ESCAPED(cur_sval); </c>"<c> } </c>
                          class="<c> if (!has_img) { </c>hidden <c> } </c>absolute inset-0 w-full h-full object-cover">
                 </div>
                 <div class="flex flex-col gap-0.5 items-start min-w-0">
@@ -85,7 +95,7 @@
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                         Choose
                         <input form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                               name="<c> ESCAPED(config->children[ti].columns[cci].cell->parts[pi]); </c>"
+                               name="<c> ESCAPED(scol->name); </c>"
                                type="file"
                                accept="image/png,image/jpeg,image/gif,image/webp"
                                class="hidden" data-img-input>
@@ -96,33 +106,53 @@
                     </div>
                 </div>
             </div>
-            <c> } else if (config->children[ti].columns[cci].cell->part_choices
-                       && config->children[ti].columns[cci].cell->part_choices[pi]) { </c>
+            <c> } else if (scol->type == COL_TYPE_FK_SELECT) { </c>
                 <select form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                        name="<c> ESCAPED(config->children[ti].columns[cci].cell->parts[pi]); </c>"
+                        name="<c> ESCAPED(scol->name); </c>"
+                        <c> if (!scol->nullable) { </c>required<c> } </c>
                         class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                    <c> for (size_t o = 0;
-                            config->children[ti].columns[cci].cell->part_choices[pi][o];
-                            ++o) { </c>
-                    <option value="<c> STR(config->children[ti].columns[cci].cell->part_choices[pi][o]); </c>"
-                        <c> if (strcmp(rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci) + pi], config->children[ti].columns[cci].cell->part_choices[pi][o]) == 0) { </c>selected<c> } </c>>
-                        <c> ESCAPED(config->children[ti].columns[cci].cell->part_choices[pi][o]); </c>
+                    <c> if (scol->nullable) { </c>
+                    <option value=""
+                        <c> if (cur_sval == NULL || cur_sval[0] == '\0') { </c>selected<c> } </c>>
+                        None
+                    </option>
+                    <c> } </c>
+                    <c> for (size_t o = 0; o < scol->opt_count; ++o) { </c>
+                    <option value="<c> STR(scol->opt[o].id); </c>"
+                        <c> if (cur_sval != NULL && strcmp(cur_sval, scol->opt[o].id) == 0) { </c>selected<c> } </c>>
+                        <c> ESCAPED(scol->opt[o].label); </c>
                     </option>
                     <c> } </c>
                 </select>
-                <c> } else { </c>
+            <c> } else if (scol->choices != NULL) { </c>
+                <select form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
+                        name="<c> ESCAPED(scol->name); </c>"
+                        class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                    <c> for (size_t o = 0; scol->choices[o] != NULL; ++o) { </c>
+                    <option value="<c> STR(scol->choices[o]); </c>"
+                        <c> if (cur_sval != NULL && strcmp(cur_sval, scol->choices[o]) == 0) { </c>selected<c> } </c>>
+                        <c> ESCAPED(scol->choices[o]); </c>
+                    </option>
+                    <c> } </c>
+                </select>
+            <c> } else { </c>
                 <input form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                       name="<c> ESCAPED(config->children[ti].columns[cci].cell->parts[pi]); </c>"
-                       type="text"
-                       value="<c> ESCAPED(rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci) + pi]); </c>"
+                       name="<c> ESCAPED(scol->name); </c>"
+                       type="<c> if (scol->type == COL_TYPE_NUM) { </c>number<c> } else if (scol->type == COL_TYPE_DATE) { </c>date<c> } else { </c>text<c> } </c>"
+                       <c> if (scol->type == COL_TYPE_NUM) { </c>step="any"<c> } </c>
+                       <c> if (!scol->nullable && scol->type != COL_TYPE_DATE) { </c>required<c> } </c>
+                       value="<c> if (cur_sval != NULL) { if (scol->type == COL_TYPE_DATE) { ESCAPED(md_date_input(cur_sval)); } else { ESCAPED(cur_sval); } } </c>"
                        class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                <c> } </c>
+            <c> } </c>
             <c> } </c>
         </div>
         <c> } else { </c>
-            <c> if (config->children[ti].columns[cci].type == COL_TYPE_IMG) {
+            <c> if (ccol->type == COL_TYPE_IMG) {
                     const char *cur_img = rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)];
-                    bool has_img = cur_img && cur_img[0]; </c>
+                    bool has_img = false;
+                    if (cur_img != NULL && cur_img[0] != '\0') {
+                        has_img = true;
+                    } </c>
             <div class="relative flex items-center gap-2" data-img-upload>
                 <div class="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
                     <svg data-img-placeholder class="w-5 h-5 text-gray-400 <c> if (has_img) { </c>hidden<c> } </c>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -135,7 +165,7 @@
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                         Choose
                         <input form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                               name="<c> STR(config->children[ti].columns[cci].name); </c>"
+                               name="<c> STR(ccol->name); </c>"
                                type="file"
                                accept="image/png,image/jpeg,image/gif,image/webp"
                                class="hidden" data-img-input>
@@ -146,37 +176,41 @@
                     </div>
                 </div>
             </div>
-            <c> } else if (config->children[ti].columns[cci].type == COL_TYPE_FK_SELECT) { </c>
+            <c> } else if (ccol->type == COL_TYPE_FK_SELECT) { </c>
             <select form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                    name="<c> STR(config->children[ti].columns[cci].name); </c>"
+                    name="<c> STR(ccol->name); </c>"
                     class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                <c> if (config->children[ti].columns[cci].nullable) { </c>
+                <c> if (ccol->nullable) { </c>
                 <option value=""
                     <c> if (rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)][0] == '\0') { </c>selected<c> } </c>>
                     None
                 </option>
                 <c> } </c>
-                <c> for (size_t o = 0; o < config->children[ti].columns[cci].opt_count; ++o) { </c>
-                <option value="<c> STR(config->children[ti].columns[cci].opt[o].id); </c>"
-                    <c> if (strcmp(rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)], config->children[ti].columns[cci].opt[o].id) == 0) { </c>selected<c> } </c>>
-                    <c> ESCAPED(config->children[ti].columns[cci].opt[o].label); </c>
+                <c> for (size_t o = 0; o < ccol->opt_count; ++o) { </c>
+                <option value="<c> STR(ccol->opt[o].id); </c>"
+                    <c> if (strcmp(rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)], ccol->opt[o].id) == 0) { </c>selected<c> } </c>>
+                    <c> ESCAPED(ccol->opt[o].label); </c>
                 </option>
                 <c> } </c>
             </select>
             <c> } else { </c>
             <input form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
-                   name="<c> STR(config->children[ti].columns[cci].name); </c>"
-                   type="<c> if (config->children[ti].columns[cci].type == COL_TYPE_DATE) { </c>date<c> } else if (config->children[ti].columns[cci].type == COL_TYPE_NUM) { </c>number<c> } else { </c>text<c> } </c>"
-                   <c> if (config->children[ti].columns[cci].type == COL_TYPE_NUM) { </c>
+                   name="<c> STR(ccol->name); </c>"
+                   type="<c> if (ccol->type == COL_TYPE_DATE) { </c>date<c> } else if (ccol->type == COL_TYPE_NUM) { </c>number<c> } else { </c>text<c> } </c>"
+                   <c> if (ccol->type == COL_TYPE_NUM) { </c>
                           step="any" 
                    <c> } </c>
-                   <c> if (!config->children[ti].columns[cci].nullable &&
-                           config->children[ti].columns[cci].type != COL_TYPE_DATE) { </c>
+                   <c> if (!ccol->nullable && ccol->type != COL_TYPE_DATE) { </c>
                           required
                    <c> } </c>
-                   value="<c> ESCAPED(config->children[ti].columns[cci].type == COL_TYPE_DATE
-                                    ? md_date_input(rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)])
-                                    : rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)]); </c>"
+                   value="<c> const char *cur_cval = rows->items[ri].children[ti].items[ci].values[md_col_slot(config->children[ti].columns, cci)];
+                              if (cur_cval != NULL) {
+                                  if (ccol->type == COL_TYPE_DATE) {
+                                      ESCAPED(md_date_input(cur_cval));
+                                  } else {
+                                      ESCAPED(cur_cval);
+                                  }
+                              } </c>"
                    class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
             <c> } </c>
         <c> } </c>

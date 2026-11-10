@@ -23,6 +23,24 @@ vanilla JS only.
   Baseline before POS work: **140 passing (94 + 40 + 6)**.
 - Real DB ~/sqlite3/webc_c/db — NEVER write to it from tests/tools.
 
+## master_child engine (key facts)
+- MD_MasterConfig{table,title,id_column,crud_path,columns,sum,children[]};
+  MD_Column{name,label,type,nullable,fk_*,subcols,subcol_count,style,read_sql,
+  choices,hidden,computed}.
+- Types: COL_TYPE_TEXT, COL_TYPE_NUM, COL_TYPE_DATE, COL_TYPE_TEXTAREA,
+  COL_TYPE_FK_SELECT, COL_TYPE_IMG, COL_TYPE_COMPOSITE.
+- Composite cells use nested MD_Column sub-columns via Pattern 2 macros:
+  MD_FIELD, MD_FK, MD_CHOICE, MD_STACK, MD_AVATAR, MD_ACTIVITY. No parallel
+  MD_Cell struct.
+- Sub-columns support independent foreign keys (dictionaries/orgs), choices, and
+  nullability. Engine recurses into subcols for option loading, FK label
+  resolution, and multi-field search filtering.
+- Master: SQL window (LIMIT/OFFSET) + count(*); children loaded fully and
+  windowed in template. ORDER BY created_at DESC.
+- Forms: form="..." attr wiring (edit mdf-e-<table>-<id>, add
+  mdf-a-<table>-<masterid>); md_fk_display() swaps FK ids -> labels after load
+  for both flat columns and sub-columns.
+
 ## Directory map
 - third_party/ — vendored deps: coroutine/, nob/nob.h, sqlite-amalgamation-3460100/.
 - nob.c (project root) — the build driver (was nob.c). Globs only src/**.c.
@@ -96,7 +114,9 @@ vanilla JS only.
 
 ## master_child engine (key facts)
 - MD_MasterConfig{table,title,id_column,crud_path,columns,sum,children[]};
-  MD_Column{name,label,type (TEXT/NUM/DATE/TEXTAREA/FK_SELECT/COL_TYPE_IMG),nullable,fk_*,hidden,computed}.SELECT list = id_column + each columns[].name; slots = values[0]=id,
+  MD_Column{name,label,type
+  (TEXT/NUM/DATE/TEXTAREA/FK_SELECT/COL_TYPE_IMG),nullable,fk_*,hidden,computed}.
+  SELECT list = id_column + each columns[].name; slots = values[0]=id,
   values[i+1] per column (this is the indexing the multi-field-cell phase
   replaces with a slot map).
 - Master: SQL window (LIMIT/OFFSET) + count(*); children loaded fully and

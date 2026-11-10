@@ -10,76 +10,81 @@
 #include "src/http/utils.h"
 
 // =========================================================================
-// /pos/staff: staff_code + {first,last} name cell + user/org/location FKs
-// + phone/hire_date/staff_type (all settable now - Phase 13 audit). Staff
-// is a MASTER table: it renders only here, never as a child tab of
-// /pos/users or /pos/org. The single create/update serves the one form
-// body; user/org/type/hire/phone are still opt fields (body first, query
-// fallback) so a pre-0013 API body without them keeps working.
+// /pos/staff: staff_code + computed Name (lives on users via user_id) +
+// user/org/type FKs + hire_date/salary. Staff is a MASTER table: it
+// renders only here, never as a child tab of /pos/users or /pos/org. The
+// single create/update serves the one form body; user/org/type/hire/salary
+// are opt fields (body first, query fallback) so a pre-0013 API body
+// without them keeps working. Person names/phone/village were dropped
+// from staff in the 0003 schema fix - they live on the linked users row.
 // =========================================================================
 
-static const char *staff_name_parts[] = { "first_name", "last_name" };
-static const char *staff_name_labels[] = { "First", "Last" };
-static const MD_Cell staff_name_cell = {
-    .parts       = staff_name_parts,
-    .part_labels = staff_name_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
+// Name: read-only scalar subquery over the linked user (computed = no
+// form input in either form; the row query and ?q_name search both read
+// this expression through md_col_sql). One sub-column so the stack
+// renderer draws a single line and the slot layout stays value_count = 2.
 MD_Column md_staff_columns[] = {
     { .name = "staff_code", .label = "Code", .type = COL_TYPE_TEXT,
       .nullable = false },
-    { .name = "first_name", .label = "Name", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &staff_name_cell },
+    {
+        .label        = "Name",
+        .type         = COL_TYPE_COMPOSITE,
+        .style        = "stack",
+        .computed     = 1,
+        .nullable     = true,
+        .subcols      = (MD_Column[]) {
+            {
+                .name      = "name",
+                .label     = "Name",
+                .type      = COL_TYPE_TEXT,
+                .read_sql  = "(SELECT u.name FROM users u "
+                             "WHERE u.id = staff.user_id)",
+            },
+        },
+        .subcol_count = 1,
+    },
     { .name = "user_id", .label = "User", .type = COL_TYPE_FK_SELECT,
       .nullable = false, .fk_table = "users", .fk_label = "name" },
     { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
       .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
-    { .name = "village_id", .label = "Village", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "villages", .fk_label = "name_kh",
-      .fk_cascade = 1 },
-    { .name = "phone", .label = "Phone", .type = COL_TYPE_TEXT,
-      .nullable = true },
     { .name = "staff_type_dict_id", .label = "Role", .type = COL_TYPE_FK_SELECT,
       .nullable = true, .fk_table = "dictionaries", .fk_label = "label",
       .fk_where = "category = 'STAFF_TYPE'" },
     { .name = "hire_date", .label = "Hired", .type = COL_TYPE_DATE,
+      .nullable = true },
+    { .name = "salary", .label = "Salary", .type = COL_TYPE_NUM,
       .nullable = true },
 };
 const size_t md_staff_columns_count = ARRAY_LEN(md_staff_columns);
 
 // DB mutations only -- list loading lives in the master_child engine.
 // Column order: (user_id, org_unit_id, staff_code, staff_type_dict_id,
-// first_name, last_name, phone, village_id, hire_date).
+// hire_date, salary).
 static bool create_staff_member(db_t *db, String_View *fields, size_t count) {
-    if (count < 9) return false;
+    if (count < 6) return false;
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "INSERT INTO staff "
-                         "(user_id, org_unit_id, staff_code, staff_type_dict_id, "
-                          "first_name, last_name, phone, village_id, hire_date) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                         "(user_id, org_unit_id, staff_code, "
+                          "staff_type_dict_id, hire_date, salary) "
+                         "VALUES (?, ?, ?, ?, ?, ?);",
         [SQL_MYSQL]    = "INSERT INTO staff "
-                         "(user_id, org_unit_id, staff_code, staff_type_dict_id, "
-                          "first_name, last_name, phone, village_id, hire_date) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                         "(user_id, org_unit_id, staff_code, "
+                          "staff_type_dict_id, hire_date, salary) "
+                         "VALUES (?, ?, ?, ?, ?, ?);",
         [SQL_POSTGRES] = "INSERT INTO staff "
-                         "(user_id, org_unit_id, staff_code, staff_type_dict_id, "
-                          "first_name, last_name, phone, village_id, hire_date) "
-                         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+                         "(user_id, org_unit_id, staff_code, "
+                          "staff_type_dict_id, hire_date, salary) "
+                         "VALUES ($1, $2, $3, $4, $5, $6);",
     };
     sql_stmt stmt = {0};
     bool result = true;
     if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    if (!sql_bind(&stmt, 1, sql_fgsv(fields[4]))) return_defer(false);  // user
-    if (!sql_bind(&stmt, 2, sql_fgsv(fields[5]))) return_defer(false);  // org
+    if (!sql_bind(&stmt, 1, sql_fgsv(fields[1]))) return_defer(false);  // user
+    if (!sql_bind(&stmt, 2, sql_fgsv(fields[2]))) return_defer(false);  // org
     if (!sql_bind(&stmt, 3, SQL_SV(fields[0]))) return_defer(false);  // code
-    if (!sql_bind(&stmt, 4, sql_fgsv(fields[6]))) return_defer(false);  // type
-    if (!sql_bind(&stmt, 5, SQL_SV(fields[1]))) return_defer(false);  // first
-    if (!sql_bind(&stmt, 6, SQL_SV(fields[2]))) return_defer(false);  // last
-    if (!sql_bind(&stmt, 7, sql_fgsv(fields[8]))) return_defer(false);  // phone
-    if (!sql_bind(&stmt, 8, SQL_SV(fields[3]))) return_defer(false);  // location
-    if (!sql_bind(&stmt, 9, sql_fgsv(fields[7]))) return_defer(false);  // hire
+    if (!sql_bind(&stmt, 4, sql_fgsv(fields[3]))) return_defer(false);  // type
+    if (!sql_bind(&stmt, 5, sql_fgsv(fields[4]))) return_defer(false);  // hire
+    if (!sql_bind(&stmt, 6, sql_fgsv(fields[5]))) return_defer(false);  // salary
     if (!sql_final_step(&stmt))                 return_defer(false);
 defer:
     sql_finalize(&stmt);
@@ -89,61 +94,49 @@ defer:
 static bool update_staff_member(db_t *db, String_View *fields, size_t count,
                                 String_View id)
 {
-    if (count < 9) return false;
+    if (count < 6) return false;
     // Every set is COALESCE: fields missing from a view's body (type,
-    // hire_date, phone) keep their stored values; the two fk opts come
+    // hire_date, salary) keep their stored values; the two fk opts come
     // from body (master) or query (child) -- both carry the same value.
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "UPDATE staff SET "
                          "staff_code = COALESCE(NULLIF(?, ''), staff_code), "
-                         "first_name = COALESCE(NULLIF(?, ''), first_name), "
-                         "last_name = COALESCE(NULLIF(?, ''), last_name), "
-                         "village_id = COALESCE(NULLIF(?, ''), village_id), "
                          "org_unit_id = COALESCE(NULLIF(?, ''), org_unit_id), "
                          "user_id = COALESCE(NULLIF(?, ''), user_id), "
                          "staff_type_dict_id = COALESCE(NULLIF(?, ''), "
                          "staff_type_dict_id), "
                          "hire_date = COALESCE(NULLIF(?, ''), hire_date), "
-                         "phone = COALESCE(NULLIF(?, ''), phone) "
+                         "salary = COALESCE(NULLIF(?, ''), salary) "
                          "WHERE id = ?;",
         [SQL_MYSQL]    = "UPDATE staff SET "
                          "staff_code = COALESCE(NULLIF(?, ''), staff_code), "
-                         "first_name = COALESCE(NULLIF(?, ''), first_name), "
-                         "last_name = COALESCE(NULLIF(?, ''), last_name), "
-                         "village_id = COALESCE(NULLIF(?, ''), village_id), "
                          "org_unit_id = COALESCE(NULLIF(?, ''), org_unit_id), "
                          "user_id = COALESCE(NULLIF(?, ''), user_id), "
                          "staff_type_dict_id = COALESCE(NULLIF(?, ''), "
                          "staff_type_dict_id), "
                          "hire_date = COALESCE(NULLIF(?, ''), hire_date), "
-                         "phone = COALESCE(NULLIF(?, ''), phone) "
+                         "salary = COALESCE(NULLIF(?, ''), salary) "
                          "WHERE id = ?;",
         [SQL_POSTGRES] = "UPDATE staff SET "
                          "staff_code = COALESCE(NULLIF($1, ''), staff_code), "
-                         "first_name = COALESCE(NULLIF($2, ''), first_name), "
-                         "last_name = COALESCE(NULLIF($3, ''), last_name), "
-                         "village_id = COALESCE(NULLIF($4, ''), village_id), "
-                         "org_unit_id = COALESCE(NULLIF($5, ''), org_unit_id), "
-                         "user_id = COALESCE(NULLIF($6, ''), user_id), "
-                         "staff_type_dict_id = COALESCE(NULLIF($7, ''), "
+                         "org_unit_id = COALESCE(NULLIF($2, ''), org_unit_id), "
+                         "user_id = COALESCE(NULLIF($3, ''), user_id), "
+                         "staff_type_dict_id = COALESCE(NULLIF($4, ''), "
                          "staff_type_dict_id), "
-                         "hire_date = COALESCE(NULLIF($8, ''), hire_date), "
-                         "phone = COALESCE(NULLIF($9, ''), phone) "
-                         "WHERE id = $10;",
+                         "hire_date = COALESCE(NULLIF($5, ''), hire_date), "
+                         "salary = COALESCE(NULLIF($6, ''), salary) "
+                         "WHERE id = $7;",
     };
     sql_stmt stmt = {0};
     bool result = true;
     if (!sql_prepare(db, q[db->lang], &stmt))     return_defer(false);
     if (!sql_bind(&stmt, 1, SQL_SV(fields[0])))   return_defer(false);  // code
-    if (!sql_bind(&stmt, 2, SQL_SV(fields[1])))   return_defer(false);  // first
-    if (!sql_bind(&stmt, 3, SQL_SV(fields[2])))   return_defer(false);  // last
-    if (!sql_bind(&stmt, 4, SQL_SV(fields[3])))   return_defer(false);  // location
-    if (!sql_bind(&stmt, 5, sql_fgsv(fields[5]))) return_defer(false);  // org
-    if (!sql_bind(&stmt, 6, sql_fgsv(fields[4]))) return_defer(false);  // user
-    if (!sql_bind(&stmt, 7, sql_fgsv(fields[6]))) return_defer(false);  // type
-    if (!sql_bind(&stmt, 8, sql_fgsv(fields[7]))) return_defer(false);  // hire
-    if (!sql_bind(&stmt, 9, sql_fgsv(fields[8]))) return_defer(false);  // phone
-    if (!sql_bind(&stmt, 10, SQL_SV(id)))         return_defer(false);
+    if (!sql_bind(&stmt, 2, sql_fgsv(fields[2]))) return_defer(false);  // org
+    if (!sql_bind(&stmt, 3, sql_fgsv(fields[1]))) return_defer(false);  // user
+    if (!sql_bind(&stmt, 4, sql_fgsv(fields[3]))) return_defer(false);  // type
+    if (!sql_bind(&stmt, 5, sql_fgsv(fields[4]))) return_defer(false);  // hire
+    if (!sql_bind(&stmt, 6, sql_fgsv(fields[5]))) return_defer(false);  // salary
+    if (!sql_bind(&stmt, 7, SQL_SV(id)))          return_defer(false);
     if (!sql_final_step(&stmt))                   return_defer(false);
 defer:
     sql_finalize(&stmt);
@@ -212,11 +205,13 @@ void serve_pos_staff(Serve_Context *sc) {
 }
 
 // body keys first (present in all three views), query-driven fks after.
+// No name/phone/village keys: person data lives on the linked users row
+// (computed Name column reads it), employment facts only here.
 static const char *stf_fields[] = {
-    "staff_code", "first_name", "last_name", "village_id",
+    "staff_code",
 };
 static const char *stf_opt_fields[] = {
-    "user_id", "org_unit_id", "staff_type_dict_id", "hire_date", "phone",
+    "user_id", "org_unit_id", "staff_type_dict_id", "hire_date", "salary",
 };
 SERVE_CREATE(pos_staff, staff_member, stf_fields, stf_opt_fields)
 SERVE_UPDATE(pos_staff, staff_member, stf_fields, stf_opt_fields)

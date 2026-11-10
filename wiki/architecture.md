@@ -184,11 +184,10 @@ PAGE_END(sc);                        // render_page_footer()
 | `src/report/` | report registry `{id, khmer_title, sql, ...}` |
 | `src/pos/` | POS entities — one `.c`/`.h` per entity (orders, products, stock, roles, …) |
 | `src/shop/` | cart, checkout, storefront controller |
-| `src/helper/` | `cells.c` — shared cell renderers |
+| `src/helper/` | `cells.c` — shared composite cell renderers (`avatar`, `stack`, `activity`) operating on `MD_Column` sub-columns |
 | `src/crud/` | declarative CRUD API — **compiled, no callers** |
 | `src/tt.c` | the `.tt` → C compiler (build-time only) |
 | `nob.c` | the build driver (project root) |
-
 ### Two things that look load-bearing but are not
 
 - **`src/crud/`** exports `crud_rows_load`, `crud_insert`, `crud_update`,

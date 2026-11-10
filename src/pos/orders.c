@@ -15,83 +15,35 @@
 // by seeds or left on their defaults).
 // =========================================================================
 
-static const char *ord_amt_parts[] = {
-    "subtotal", "discount_amount", "tax_amount", "total_amount",
-};
-static const char *ord_amt_labels[] = { "Subtotal", "Discount", "Tax", "Total" };
-static const MD_Cell ord_amt_cell = {
-    .parts       = ord_amt_parts,
-    .part_labels = ord_amt_labels,
-    .part_count  = 4,
-    .style       = "stack",
-};
-
 MD_Column md_orders_columns[] = {
-    { .name = "order_number", .label = "Order", .type = COL_TYPE_TEXT,
-      .nullable = false },
-    { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
-    { .name = "staff_id", .label = "Staff", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "staff", .fk_label = "first_name" },
-    { .name = "customer_id", .label = "Customer", .type = COL_TYPE_FK_SELECT,
-      .nullable = true, .fk_table = "customers",
-      .fk_label = "customer_type_dict_id" },
-    { .name = "order_status_dict_id", .label = "Status",
-      .type = COL_TYPE_FK_SELECT, .nullable = true,
-      .fk_table = "dictionaries", .fk_label = "label",
-      .fk_where = "category = 'ORDER_STATUS'" },
-    { .name = "subtotal", .label = "Amounts", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &ord_amt_cell },
+    MD_FIELD("order_number", "Order #", COL_TYPE_TEXT, .nullable = false),
+    MD_FK("org_unit_id", "Branch", "org_units", "ou_name", .nullable = false),
+    MD_FK("staff_id", "Cashier", "staff", "staff_code", .nullable = false),
+    MD_FK("customer_id", "Customer", "customers", "id", .nullable = true),
+    MD_FK("order_status_dict_id", "Status", "dictionaries", "label",
+          .fk_where = "category = 'ORDER_STATUS'", .nullable = false),
+    MD_STACK("Amounts",
+        MD_FIELD("subtotal", "Subtotal", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("discount_amount", "Discount", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("tax_amount", "Tax", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("delivery_fee", "Delivery Fee", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("total_amount", "Total", COL_TYPE_NUM, .nullable = false)
+    ),
 };
 const size_t md_orders_columns_count = ARRAY_LEN(md_orders_columns);
 
 // Child tab shapes (view-local).
-static const char *oi_line_parts[] = { "unit_price", "quantity", "total_line" };
-static const char *oi_line_labels[] = { "Unit", "Qty", "Total" };
-static const MD_Cell oi_line_cell = {
-    .parts       = oi_line_parts,
-    .part_labels = oi_line_labels,
-    .part_count  = 3,
-    .style       = "stack",
-};
-
-static const char *pay_parts[] = { "amount", "payment_status" };
-static const char *pay_labels[] = { "Amount", "Status" };
-static const MD_Cell pay_cell = {
-    .parts       = pay_parts,
-    .part_labels = pay_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
-static const char *dl_recipient_parts[] = {
-    "recipient_name", "recipient_phone", "delivery_address",
-};
-static const char *dl_recipient_labels[] = { "Name", "Phone", "Address" };
-static const MD_Cell dl_recipient_cell = {
-    .parts       = dl_recipient_parts,
-    .part_labels = dl_recipient_labels,
-    .part_count  = 3,
-    .style       = "stack",
-};
-
-static const char *dl_status_parts[] = { "delivery_status", "delivery_cost" };
-static const char *dl_status_labels[] = { "Status", "Cost" };
-static const MD_Cell dl_status_cell = {
-    .parts       = dl_status_parts,
-    .part_labels = dl_status_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
 static MD_Column md_pos_order_item_columns[] = {
     { .name = "product_id", .label = "Product", .type = COL_TYPE_FK_SELECT,
       .nullable = false, .fk_table = "products", .fk_label = "name" },
     { .name = "variant_id", .label = "Variant", .type = COL_TYPE_FK_SELECT,
       .nullable = true, .fk_table = "product_variants",
       .fk_label = "variant_name" },
-    { .name = "unit_price", .label = "Line", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &oi_line_cell },
+    MD_STACK("Line",
+        MD_FIELD("unit_price", "Unit", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("quantity", "Qty", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("total_line", "Total", COL_TYPE_NUM, .nullable = false)
+    ),
 };
 static const size_t md_pos_order_item_columns_count =
     ARRAY_LEN(md_pos_order_item_columns);
@@ -101,8 +53,10 @@ static MD_Column md_pos_payment_columns[] = {
       .type = COL_TYPE_FK_SELECT, .nullable = true,
       .fk_table = "dictionaries", .fk_label = "label",
       .fk_where = "category = 'PAYMENT_METHOD'" },
-    { .name = "amount", .label = "Payment", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &pay_cell },
+    MD_STACK("Payment",
+        MD_FIELD("amount", "Amount", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("payment_status", "Status", COL_TYPE_TEXT, .nullable = false)
+    ),
     { .name = "transaction_ref", .label = "Ref", .type = COL_TYPE_TEXT,
       .nullable = true },
 };
@@ -112,11 +66,18 @@ static const size_t md_pos_payment_columns_count =
 static MD_Column md_pos_delivery_columns[] = {
     { .name = "driver_staff_id", .label = "Driver",
       .type = COL_TYPE_FK_SELECT, .nullable = true,
-      .fk_table = "staff", .fk_label = "first_name" },
-    { .name = "recipient_name", .label = "Recipient", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &dl_recipient_cell },
-    { .name = "delivery_status", .label = "Delivery", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &dl_status_cell },
+      .fk_table = "staff",
+      .fk_label = "COALESCE((SELECT u.name FROM users u "
+                       "WHERE u.id = staff.user_id), staff.id)" },
+    MD_STACK("Recipient",
+        MD_FIELD("recipient_name", "Name", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("recipient_phone", "Phone", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("delivery_address", "Address", COL_TYPE_TEXT, .nullable = false)
+    ),
+    MD_STACK("Delivery",
+        MD_FIELD("delivery_status", "Status", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("delivery_cost", "Cost", COL_TYPE_NUM, .nullable = false)
+    ),
 };
 static const size_t md_pos_delivery_columns_count =
     ARRAY_LEN(md_pos_delivery_columns);

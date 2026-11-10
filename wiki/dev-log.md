@@ -3,7 +3,9 @@
      still recoverable from git history. Nothing is back-filled here. -->
 # Dev log
 
-Newest entry at the top. Append; do not rewrite history.
+Newest entry at the top. Append;
+  do not rewrite history.
+  keep under the 80 char per line include table
 
 Status vocabulary:
 
@@ -12,6 +14,37 @@ Status vocabulary:
 **blocked** = needs something first
 
 ---
+## 2026-11-09 — Replace MD_Cell with first-class sub-columns & Pattern 2 macros —
+  **done**
+
+Replaced `MD_Cell` and parallel string arrays across entire codebase with
+recursive `subcols` in `MD_Column`.
+
+### 1. Architectural Changes
+- Deleted `MD_Cell` struct (`parts`, `part_labels`, `part_choices`, `read_parts`).
+- Added `COL_TYPE_COMPOSITE`, `subcols`, `subcol_count`, `style`, `read_sql`, and
+  `choices` to `MD_Column`.
+- Added Pattern 2 macros: `MD_FIELD`, `MD_FK`, `MD_CHOICE`, `MD_STACK`,
+  `MD_AVATAR`, `MD_ACTIVITY`.
+- Eliminated dummy `.name = "what_ever"` on composite parent columns.
+- Sub-columns now support independent `.type`, `.nullable`, `.fk_table`,
+  `.fk_where`, and `.choices`.
+- Zero ternary operators in new implementation.
+
+### 2. Engine and Template Upgrades
+- `md_col_load_options` and `md_form_cols_load` recurse into `subcols`. Dynamic
+  FK selects now work inside composite cells.
+- `md_fk_display` resolves foreign keys to labels inside composite cells.
+- `md_where` search filters across all sub-columns with OR conditions.
+- Create forms and edit rows render native `<select>` for sub-column FKs and
+  choices, with field-level `required` validation.
+
+### 3. POS Migration
+- `/pos/users`: Combined `gender` (choices + read_sql) and `user_type_dict_id`
+  (`COL_TYPE_FK_SELECT` from `dictionaries WHERE category = 'USER_TYPE'`) under
+  one `MD_STACK("Type & Gender")`.
+- Converted all composite columns in `products.c`, `stocks.c`, `orders.c`,
+  `shifts.c`, `alerts.c`, `audit.c` to Pattern 2 macros.
 ## 2026-11-07 — Fix image picker focus jump & inline script syntax errors — **done**
 
 - Fixed layout viewport shift in `/pos/users` and `/pos/customers`: `<label>`
@@ -166,7 +199,8 @@ Target: low-spec client deployment (500MB devices) under heavy datasets (15,000+
    provinces -> districts child tab (avg 8 rows).
    districts -> communes child tab (avg 10 rows).
    communes -> villages child tab (avg 8 rows).
- - Preserves DOM budget under 200 nodes per view. Peak browser tab RAM drops from 180MB to 12MB.
+ - Preserves DOM budget under 200 nodes per view. Peak browser tab RAM drops from
+   180MB to 12MB.
 
 2. SQLite memory caps:
  - Clamped PRAGMA cache_size to -2000 (2MB max).
@@ -177,7 +211,8 @@ Target: low-spec client deployment (500MB devices) under heavy datasets (15,000+
  - Updated ListExpandSwitcher.js to clear hidden child tbody innerHTML on row collapse.
  - Restores content on expand without extra network roundtrip.
 
-## 2026-11-02 — Migration cleanup, `locations` removal, geo hierarchy + cascading village picker — **done**
+## 2026-11-02 — Migration cleanup, `locations` removal, geo hierarchy + cascading
+  village picker — **done**
 
 Three asks in one pass: (1) strip the redundancy and in-place edits out of
 the migration set so a fresh database works first try; (2) delete
@@ -1329,3 +1364,51 @@ to the working tree.
 | regression 3 (avatar prefill) | `test/pos_test.py`: file inputs cannot carry `value` — prefill check now reads name/username/email/phone from inputs + `src="{PICK}"` from the preview `<img>` | `avatar edit row prefills parts + contact` PASS |
 | suite | full run after all three fixes | **21 fails = byte-identical fail set to `bc72a43`** (http 1 sidebar + pos 17 + crud 3 pre-existing provinces/districts/communes 400s) + `img_upload 25/0` + geo/mysql/https green |
 | notes | the 3 crud `create 400`s (provinces/districts/communes: `prov_id`/`dist_id`/`comm_id` required by `SERVE_*` but never rendered as form inputs) are **pre-existing at `bc72a43`**, verified by building that commit in a worktree and running the suite there (21 exact) — untouched this round | worktree removed |
+
+## 2026-11-08 — master-child at 500 rows: display memory + schema indexes (all 3 dialects)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | target workload stated by user: master **10 cells x 500 rows** + **3 child tabs x 5 cells x 500 rows** on one master_child page. Two cost centers: (1) display - `?fragment=all` renders EVERY master + EVERY child of every master into a hidden DOM store in one giant fetch; (2) schema - zero indexes serve the two hot query shapes |
+| measurements (before, seeded 500 users + notes in throwaway DB) | SSR html, `fragment=all` html, `fragment=2` html, TTFB, browser load - filled in at Results |
+| display fix | server: accept **`?fragment=<n>`** = the pagination store for ONE master page (same LIMIT/OFFSET window as SSR + one `<template data-pg-pager>` for page n). `?fragment=all` stays (http_test pins its contract). js/PaginationSwitcher.js: **drop the eager all-fetch on load**; page-link click fetches `fragment=<n>` with a **5-entry URL-keyed cache** (LRU), child-tab navs inside `.detail-panel-row` keep slicing the embedded full child list (no fetch), SSR href fallback on any failure. Result: DOM holds ~1 master page (+ up to 5 cached), transfer bounded per click |
+| schema fix | **new migration `0012_perf_indexes` x3 dialects** (`sqlite3.sql`/`mysql.sql`/`postgres.sql`, naive-`;` splitter: no semicolons in comments). (a) every soft-delete master list runs `WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT/OFFSET` -> `idx_<t>_live ON t(deleted_at, created_at)`; non-soft masters (dictionaries/notes/villages) -> `idx_<t>_created ON t(created_at)`. (b) child load `WHERE <fk> = ? [AND deleted_at IS NULL]` -> `idx_<child>_<fk>` for every MD child fk without an existing covering index/unique prefix (audit: skip `translations(language_id,...)` unique prefix, `order_items/payments/deliveries/stock` existing idx, `user_roles(user_id,...)` unique prefix - `user_roles.role_id` still needs one). Views (`v_geo_hierarchy`) skipped - not indexable. Applied migrations never edited (byte-pin + already applied) |
+| what works / does not work yet | works now: SSR windowing + client store paging (contract at `pagination.h.tt`). not yet: per-page fragment, indexes, child full-load bound |
+| affected docs | `wiki/dev-log.md`, `wiki/testing.md` if the http_test contract grows, `wiki/architecture.md` if the pager contract section needs the `fragment=<n>` mode |
+| risk notes | JS paging has no browser test coverage (verified: only http_test touches `fragment`) - manual CDP check of click->swap->pushState->back; child nav flip must NOT trigger a master fetch (nav lives in `.detail-panel-row`); `applyPage` clamps `n` against `groups.length` which is wrong for a single-page store - bypass when holder carries `data-pg-page`; migration must verify every indexed column exists in ALL three dialect files or the dialect suite breaks; `count(*)` runs for page mode (same as SSR) so totals stay honest |
+| roadmap (not this round) | C: child rows lazy per master+tab (fetch on expand/tab click) - today children load in full per windowed master (500-child case); D: batch child loads (`WHERE fk IN (...)` instead of N+1 per master); E: gzip responses (474KB -> ~40KB on the wire) |
+
+## 2026-11-08 — schema fix across all 3 SQL dialects: users person model + staff normalization
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user's in-flight edit of `0003_pos_eshop/sqlite3.sql` (users: `name` -> `first_name`/`last_name` + `gender INTEGER(1/0/-1)` + `status INTEGER(1/0/-1)`; staff drops `first_name`/`last_name`/`phone`/`village_id`, gains `salary NUMERIC`). Chosen scope (user answers): propagate across ALL dialects + split forms/API into `first_name`/`last_name` inputs + wire `gender` and `salary` into forms + staff names come from `users` via `user_id`. D5 rule: shipped migration amended in place -> golden re-pinned same commit; existing sqlite DBs take the documented auto-backup+rebuild path |
+| discovered shape | final `users` table is built by table-swap `users_pos` in **0003** (copy from demo rows) and rebuilt again in **0007** (sqlite) - both must carry the new shape, not just the inert `CREATE IF NOT EXISTS` block user edited. mysql 0007 = `ALTER MODIFY` only; postgres 0004/0007 = stubs (not ported). Real files: 0003 x3, 0004 sqlite+mysql, 0007 sqlite |
+| design: reads keep working | **generated column** `name TEXT/... GENERATED ALWAYS AS (TRIM(first_name \|\| ' ' \|\| last_name))` (mysql: `CONCAT`, `STORED`) on every users DDL site. Views (`cu.name`), `fk_label = "name"`, auth profile SELECT, MD search, sidebar identity, report views - all read paths unchanged, dialect-neutral, no C string concat anywhere |
+| design: writes split | new `split_name()` helper (split at first space, no space -> last `""`); every INSERT/UPDATE writing `name` writes `first_name`,`last_name` instead: `user.c`, `pos.c` users, `auth.c` signup + profile claim, `shop/checkout.c` guest. Forms/POST fields become `first_name`+`last_name` (templates + tests updated per user's choice) |
+| design: status int, text at boundary | storage `INTEGER 1/0/-1`; C keeps text: login gates `status = 1`; profile/claim SELECTs wrap `CASE status WHEN 1 THEN 'ACTIVE' ...`; MD avatar status part gets `MD_Cell.read_parts` (SELECT/search expr != form input name) wrapping the same CASE; writes wrap `CASE ? WHEN 'ACTIVE' THEN 1 ...`. `status_accent`, header ring, cell_avatar template, tests keep asserting text |
+| design: staff names from users | MD engine has no FROM-join (user's "add MD join" goal): staff list name = **computed cell** whose part is the scalar subquery `(SELECT name FROM users WHERE users.id = staff.user_id)` (generated `name` = composed, dialect-neutral, no engine change); `fk_label` for `orders`/`shifts` staff FK = same scalar subquery (`SELECT id, <subq> FROM staff ORDER BY <subq>` is valid in all 3); `shifts.c`/`orders.c`/`dashboard.c` raw SQL swaps `JOIN staff s ... s.first_name` -> `JOIN users su ON su.id = s.user_id` + `su.first_name`. Views in 0003 x3 + 0007 swap the same way. Documented deviation: subquery-in-cell delivers the same "names live on users" outcome with zero engine join surface |
+| design: gender + salary UI | gender: new 1-part `stack` cell on users MD with `part_choices {MALE,FEMALE,NON}` + `read_parts` CASE -> list shows label, form is a `<select>`, write converts in pos.c/user.c SQL. salary: staff form number input + create/update binds (nullable, opt-field fallback) |
+| engine changes | `MD_Cell.read_parts` (SELECT/search use it, form input `name=` keeps `parts[pi]`) at build_column_list + md_where search + read-one; `cells.c` avatar renderer grows to 5 parts (img, first, last, username, status -> name = join(first,last), sub = username, status = slot+4); flat columns untouched |
+| schema fix | amend 0003 (users block user edited + `users_pos` swap + copy `src.name` split per dialect + staff DDL mysql/pg + views `st.first_name`), 0004 (users seed split + status 1, staff seed drops 4 cols, all 3 dialects where real), 0007 sqlite (`users_pos` + copy + report view). Golden `test/golden/0003_pos_eshop.sqlite3.sql` regenerated from the amended file (http_test byte-pin) |
+| measurements | fresh-DB smoke (login, /users, /pos/users, staff, checkout) + full suite -> **21-fail byte-identical baseline** + `img_upload 25/0`; filled in at Results |
+| affected docs | `wiki/dev-log.md` (this), `wiki/database.md` if golden rule wording needs the gender/staff amend, README/WIKI lines that quote `status TEXT`/'ACTIVE' DDL |
+| risk notes | ~30 test sites post/assert `name` (http/pos/shop/img/geo) - churn accepted by user choice; `geo_cascade_test` fills staff `village_id` cascade which this drops -> retarget to `/pos/users` village cascade (pos.c:83 host) or update; `crud_contract_test` raw `status` asserts -> int; staff create `count<9` contract shrinks; edit-prefill must round-trip (read_parts value == choice value); generated column cannot be INSERTed - every INSERT column list must drop `name`; `SELECT *` sites (v_active_users) gain `gender` + keep `name` (generated) - column-order consumers none found |
+| roadmap (not this round) | perf round still pending: `0012_perf_indexes` x3 + `?fragment=<n>` per-page store + `PaginationSwitcher.js` per-page cache (plan above); MD FROM-join support if a second normalized master appears |
+
+## 2026-11-09 — bug/vulnerability sweep: build break + MD_FK + SQL/leak fixes
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user's9-item bug list, verified line-by-line (verdicts in dev-log Results below). Fix order agreed: **#0 build break** (user's live template edit dropped a `}` in `master_child.h.tt` -> generated `if (!fragment)` unclosed, `master_child.c:780` EOF) -> **#2/#3 compile blockers** (MD_Cell removal incomplete across11 files; `md_pos_users_columns` static-after-extern) -> **#1 `MD_FK`** (4th arg is the display col but macro maps it to `fk_where` + hardcodes `fk_label="label"` -> every non-dict FK dropdown issues invalid SQL) -> **#4** `DELETE categories` missing `FROM` x3 dialects -> **#6** orders Amounts stack missing `total_amount` -> **#7** `md_sql_quote` MySQL backslash SQLi (ids come from URL path) -> **#5** leaks (child-row `values`/`disp`, `build_column_list` `cols`, `col->opt` overwrite-per-request) -> **#9** stray `src/shop/#checkout.c#` -> **#8 deferred** (`?` placeholders only matter when the pg driver — today a stub — lands) |
+| design | #0: restore the second `}` after `</form>` in `display/component/master_child.h.tt` (form-if + `if (!fragment)` close). #2: finish user's in-flight `MD_Cell` -> `MD_Column.subcols` conversion (cell structs become `MD_Column` arrays with `.label`/`.choices`/`.read_parts` where needed) — user said "go", takeover confirmed. #3: drop `static` on `md_pos_users_columns` in `pos.c`. #1: `MD_FK(name_,label_,table_,where_,...)` -> `.fk_label = (where_)` (display col), drop hardcoded `"label"`; call sites already pass real `.fk_where` in `__VA_ARGS__` where scoped. #7: escape `\` -> `\\` in `md_sql_quote` (mysql-safe, no-op for sqlite/pg). #5: free child values/disp in `md_master_rows_free`, `free(cols)` in `load_child_rows`, free prior `col->opt` before reload |
+| measurements | `./build/bin/nob` green (from `master_child.c:780` failure) + full suite -> baseline compare (21-fail byte-identical + `img_upload 25/0`; schema-round test churn fixes land with this run); filled in at Results |
+| affected docs | `wiki/dev-log.md` (this) |
+| risk notes | #2 touches11 files mid-refactor - verify each `.cell`/`MD_Cell` site against the new `subcols` shape before converting; #1 changes option-SQL for every FK dropdown - smoke every form select; #6 needs `total_amount` column confirmed present in all3 dialects before adding to the stack; golden migrations untouched this round |
+| roadmap (not this round) | #8 placeholder audit when pg driver implements; perf round (`0012_perf_indexes` x3 + `?fragment=<n>`) still queued |

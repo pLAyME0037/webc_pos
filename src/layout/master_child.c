@@ -34,6 +34,10 @@ static void md_master_rows_free(MD_MasterRows *rows) {
         if (row->children) {
             for (size_t ci = 0; ci < row->children_count; ++ci) {
                 MD_ChildRows *crows = &row->children[ci];
+                for (size_t j = 0; j < crows->count; ++j) {
+                    free(crows->items[j].values);
+                    free(crows->items[j].disp);
+                }
                 free(crows->items);
             }
             free(row->children);
@@ -48,11 +52,17 @@ static char *col_to_str(sql_stmt *stmt, int col) {
     return val ? temp_strdup(val) : temp_strdup("");
 }
 
-// Quote a TEXT id for literal use in generated SQL (' -> '').
-static const char *md_sql_quote(const char *s) {
+// Quote a TEXT id for literal use in generated SQL (' -> '' everywhere;
+// backslash doubled ONLY on MySQL, where it is a string escape by default
+// - without this, an id of \' would survive quote-doubling and terminate
+// the literal (URL-path ids reach here, so that is a real injection on
+// the mysql dialect). sqlite/pg read backslash as a plain character;
+// escaping it there would corrupt the value.
+static const char *md_sql_quote(const char *s, sql_lang_t lang) {
     String_Builder sb = {0};
     for (const char *p = s; *p; ++p) {
         if (*p == '\'') sb_append_cstr(&sb, "''");
+        else if (*p == '\\' && lang == SQL_MYSQL) sb_append_cstr(&sb, "\\\\");
         else sb_append_buf(&sb, p, 1);
     }
     sb_append_null(&sb);
@@ -61,21 +71,26 @@ static const char *md_sql_quote(const char *s) {
     return copy;
 }
 
+static const char *md_col_sql(const MD_Column *col) {
+    if (col->read_sql != NULL && col->read_sql[0] != '\0') {
+        return col->read_sql;
+    }
+    return col->name;
+}
+
 static char *build_column_list(const MD_ChildTab *child) {
     String_Builder sb = {0};
     sb_append_cstr(&sb, child->id_column);
     for (size_t i = 0; i < child->column_count; ++i) {
         const MD_Column *col = &child->columns[i];
-        if (col->cell) {
-            // Composite column: SELECT one column per part; the slot map
-            // (md_col_slot) lines values[] up with them.
-            for (size_t p = 0; p < col->cell->part_count; ++p) {
+        if (col->subcols != NULL && col->subcol_count > 0) {
+            for (size_t p = 0; p < col->subcol_count; ++p) {
                 sb_append_cstr(&sb, ", ");
-                sb_append_cstr(&sb, col->cell->parts[p]);
+                sb_append_cstr(&sb, md_col_sql(&col->subcols[p]));
             }
         } else {
             sb_append_cstr(&sb, ", ");
-            sb_append_cstr(&sb, col->name);
+            sb_append_cstr(&sb, md_col_sql(col));
         }
     }
     sb_append_null(&sb);
@@ -98,15 +113,17 @@ static bool load_child_rows(db_t              *db,
                              : " AND deleted_at IS NULL";
     }
     if (child->fk_subquery != NULL) {
-        where_fk = temp_sprintf(child->fk_subquery, md_sql_quote(master_id));
+        where_fk = temp_sprintf(child->fk_subquery,
+                                md_sql_quote(master_id, db->lang));
     } else {
         where_fk = temp_sprintf("%s = '%s'", child->fk_column,
-                                md_sql_quote(master_id));
+                                md_sql_quote(master_id, db->lang));
     }
     char *sql = temp_sprintf("SELECT %s FROM %s WHERE %s%s "
                              "ORDER BY %s DESC;",
                              cols, child->table, where_fk, trash,
                              child->id_column);
+    free(cols);
     sql_stmt stmt = {0};
     if (!sql_prepare(db, sql, &stmt)) {
         return false;
@@ -144,16 +161,14 @@ static const char *md_fk_options_where(const MD_Column *col) {
 }
 
 static void md_col_load_options(db_t *db, MD_Column *col) {
-    // A cascade leaf ships no option list: its template renders only the
-    // stored value and GeoCascade.js fetches the rest per commune. Loading
-    // 14,858 rows here would be pure waste - md_fk_display falls back to a
-    // one-row lookup for the label, which is cheaper than the full table.
-    // Unconditional, including on the ?nojs=1 render: these options feed
-    // the UPDATE form, and the edit button that opens it is a type="button"
-    // toggled by ListExpandSwitcher.js - with scripting off that row never
-    // opens, so the list would be dead weight. The CREATE form loads its
-    // own copy via md_form_cols_load, which is the one no-JS users reach.
-    if (!col || col->type != COL_TYPE_FK_SELECT || !col->fk_table) return;
+    if (col == NULL) return;
+    if (col->subcols != NULL && col->subcol_count > 0) {
+        for (size_t p = 0; p < col->subcol_count; ++p) {
+            md_col_load_options(db, &col->subcols[p]);
+        }
+        return;
+    }
+    if (col->type != COL_TYPE_FK_SELECT || col->fk_table == NULL) return;
     if (col->fk_cascade) return;
     char *sql = temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC;",
             col->fk_label, col->fk_table, md_fk_options_where(col),
@@ -167,16 +182,32 @@ static void md_col_load_options(db_t *db, MD_Column *col) {
     Sql_Step ret;
     for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
         if (count == cap) {
-            cap = cap ? cap * 2 : 8;
+            if (cap == 0) {
+                cap = 8;
+            } else {
+                cap = cap * 2;
+            }
             items = realloc(items, cap * sizeof(MD_Option));
         }
         const char *lid = sql_column_text(&stmt, 0);
-        items[count].id = temp_strdup(lid ? lid : "");
+        if (lid == NULL) {
+            items[count].id = temp_strdup("");
+        } else {
+            items[count].id = temp_strdup(lid);
+        }
         const char *l = sql_column_text(&stmt, 1);
-        items[count].label = temp_strdup(l ? l : "");
+        if (l == NULL) {
+            items[count].label = temp_strdup("");
+        } else {
+            items[count].label = temp_strdup(l);
+        }
         count++;
     }
     sql_finalize(&stmt);
+    // Static configs survive across requests: drop the option array from
+    // the previous load (labels/ids are temp-arena, only the array is
+    // heap) or every page render grows the process.
+    free(col->opt);
     col->opt = items;
     col->opt_count = count;
 }
@@ -192,7 +223,8 @@ static const char *md_fk_display(db_t *db, const MD_Column *col, const char *id)
     }
     if (!db || !col->fk_label) return id;
     char *sql = temp_sprintf("SELECT %s FROM %s WHERE id = '%s';",
-                             col->fk_label, col->fk_table, md_sql_quote(id));
+                             col->fk_label, col->fk_table,
+                             md_sql_quote(id, db->lang));
     sql_stmt stmt = {0};
     if (!sql_prepare(db, sql, &stmt)) return id;
     const char *result = id;
@@ -208,29 +240,42 @@ static bool md_form_cols_load(db_t *db, const MD_MasterConfig *config,
                               bool lazy_cascade, MD_FormCols *out) {
     for (size_t i = 0; i < config->column_count; ++i) {
         MD_FormCol fc = { .col = &config->columns[i] };
-        // Cascade leaves never render their option list (the template emits
-        // only an empty/None choice and GeoCascade.js fills it per commune),
-        // so skip the 14,858-row fetch entirely - unless this is the
-        // ?nojs=1 render, which ships the list because JS never runs there.
-        if (fc.col->type == COL_TYPE_FK_SELECT && fc.col->fk_table
-            && !(fc.col->fk_cascade && lazy_cascade)) {
-            char *sql = temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC;",
-                    fc.col->fk_label, fc.col->fk_table,
-                    md_fk_options_where(fc.col), fc.col->fk_label);
-            sql_stmt stmt = {0};
-            if (!sql_prepare(db, sql, &stmt)) {
-                return false;
+        if (fc.col->subcols != NULL && fc.col->subcol_count > 0) {
+            for (size_t p = 0; p < fc.col->subcol_count; ++p) {
+                md_col_load_options(db, &fc.col->subcols[p]);
             }
-            Sql_Step ret;
-            for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
-                MD_Option o = {0};
-                const char *oid = sql_column_text(&stmt, 0);
-                o.id = temp_strdup(oid ? oid : "");
-                const char *l = sql_column_text(&stmt, 1);
-                o.label = temp_strdup(l ? l : "");
-                da_append(&fc, o);
+        } else if (fc.col->type == COL_TYPE_FK_SELECT && fc.col->fk_table != NULL) {
+            bool skip_cascade = false;
+            if (fc.col->fk_cascade && lazy_cascade) {
+                skip_cascade = true;
             }
-            sql_finalize(&stmt);
+            if (!skip_cascade) {
+                char *sql = temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC;",
+                        fc.col->fk_label, fc.col->fk_table,
+                        md_fk_options_where(fc.col), fc.col->fk_label);
+                sql_stmt stmt = {0};
+                if (!sql_prepare(db, sql, &stmt)) {
+                    return false;
+                }
+                Sql_Step ret;
+                for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
+                    MD_Option o = {0};
+                    const char *oid = sql_column_text(&stmt, 0);
+                    if (oid == NULL) {
+                        o.id = temp_strdup("");
+                    } else {
+                        o.id = temp_strdup(oid);
+                    }
+                    const char *l = sql_column_text(&stmt, 1);
+                    if (l == NULL) {
+                        o.label = temp_strdup("");
+                    } else {
+                        o.label = temp_strdup(l);
+                    }
+                    da_append(&fc, o);
+                }
+                sql_finalize(&stmt);
+            }
         }
         da_append(out, fc);
     }
@@ -302,6 +347,30 @@ static void md_append_like_cast(String_Builder *sb, db_t *db, const char *expr) 
                           : " AS TEXT) LIKE ");
 }
 
+static void md_append_col_search(String_Builder *cond, db_t *db,
+                                 const char *table_name,
+                                 const MD_Column *col, int *n)
+{
+    if (col->type == COL_TYPE_FK_SELECT && col->fk_table != NULL && col->fk_label != NULL) {
+        sb_append_cstr(cond, "(");
+        md_append_like_cast(cond, db, col->name);
+        sb_append_cstr(cond, md_ph(db, n));
+        sb_append_cstr(cond, " OR EXISTS (SELECT 1 FROM ");
+        sb_append_cstr(cond, col->fk_table);
+        sb_append_cstr(cond, " mdq WHERE mdq.deleted_at IS NULL AND mdq.id = ");
+        sb_append_cstr(cond, table_name);
+        sb_append_cstr(cond, ".");
+        sb_append_cstr(cond, col->name);
+        sb_append_cstr(cond, " AND ");
+        md_append_like_cast(cond, db, temp_sprintf("mdq.%s", col->fk_label));
+        sb_append_cstr(cond, md_ph(db, n));
+        sb_append_cstr(cond, "))");
+    } else {
+        md_append_like_cast(cond, db, md_col_sql(col));
+        sb_append_cstr(cond, md_ph(db, n));
+    }
+}
+
 // The whole WHERE for one master view: the soft-delete scope plus the
 // table search -- each search term ANDed as its own parenthesized group
 // (LIKE over the scoped column, or every displayed one, and for FK
@@ -310,15 +379,15 @@ static void md_append_like_cast(String_Builder *sb, db_t *db, const char *expr) 
 // counts LIKE placeholders: bind each term's pattern to the slots it
 // owns right after sql_prepare (md_bind_search).
 static const char *md_where(db_t *db, const MD_MasterConfig *config,
-                            bool show_deleted, MD_Search *search,
-                            int *nbinds)
+        bool show_deleted, MD_Search *search,
+        int *nbinds)
 {
     if (nbinds) *nbinds = 0;
     String_Builder sb = {0};
     const char *joiner = " WHERE ";
     if (config->soft_delete) {
         sb_append_cstr(&sb, show_deleted ? " WHERE deleted_at IS NOT NULL"
-                                         : " WHERE deleted_at IS NULL");
+                : " WHERE deleted_at IS NULL");
         joiner = " AND ";
     }
     if (md_search_on(search)) {
@@ -330,35 +399,17 @@ static const char *md_where(db_t *db, const MD_MasterConfig *config,
                 const MD_Column *col = &config->columns[ci];
                 if (!md_col_queryable(col)) continue;
                 if (term->col && term->col != col) continue;
-                if (cond.count) sb_append_cstr(&cond, " OR ");
-                if (col->cell) {
-                    for (size_t p = 0; p < col->cell->part_count; ++p) {
-                        if (p) sb_append_cstr(&cond, " OR ");
-                        md_append_like_cast(&cond, db, col->cell->parts[p]);
-                        sb_append_cstr(&cond, md_ph(db, &n));
-                    }
-                } else if (col->type == COL_TYPE_FK_SELECT
-                           && col->fk_table && col->fk_label) {
+                if (cond.count > 0) sb_append_cstr(&cond, " OR ");
+
+                if (col->subcols != NULL && col->subcol_count > 0) {
                     sb_append_cstr(&cond, "(");
-                    md_append_like_cast(&cond, db, col->name);
-                    sb_append_cstr(&cond, md_ph(db, &n));
-                    sb_append_cstr(&cond, " OR EXISTS (SELECT 1 FROM ");
-                    sb_append_cstr(&cond, col->fk_table);
-                    // Live parents only: typing the name of a soft-deleted
-                    // staff member must not surface its rows.
-                    sb_append_cstr(&cond, " mdq WHERE mdq.deleted_at IS NULL "
-                                          "AND mdq.id = ");
-                    sb_append_cstr(&cond, config->table);
-                    sb_append_cstr(&cond, ".");
-                    sb_append_cstr(&cond, col->name);
-                    sb_append_cstr(&cond, " AND ");
-                    md_append_like_cast(&cond, db,
-                                        temp_sprintf("mdq.%s", col->fk_label));
-                    sb_append_cstr(&cond, md_ph(db, &n));
-                    sb_append_cstr(&cond, "))");
+                    for (size_t p = 0; p < col->subcol_count; ++p) {
+                        if (p > 0) sb_append_cstr(&cond, " OR ");
+                        md_append_col_search(&cond, db, config->table, &col->subcols[p], &n);
+                    }
+                    sb_append_cstr(&cond, ")");
                 } else {
-                    md_append_like_cast(&cond, db, col->name);
-                    sb_append_cstr(&cond, md_ph(db, &n));
+                    md_append_col_search(&cond, db, config->table, col, &n);
                 }
             }
             if (cond.count) {
@@ -407,31 +458,28 @@ static bool md_load_master_with_children(db_t                  *db,
     sb_append_cstr(&cl, config->id_column);
     for (size_t ci2 = 0; ci2 < config->column_count; ++ci2) {
         const MD_Column *col = &config->columns[ci2];
-        if (col->cell) {
-            for (size_t p = 0; p < col->cell->part_count; ++p) {
+        if (col->subcols != NULL && col->subcol_count > 0) {
+            for (size_t p = 0; p < col->subcol_count; ++p) {
                 sb_append_cstr(&cl, ", ");
-                sb_append_cstr(&cl, col->cell->parts[p]);
+                sb_append_cstr(&cl, md_col_sql(&col->subcols[p]));
             }
         } else {
             sb_append_cstr(&cl, ", ");
-            sb_append_cstr(&cl, col->name);
+            sb_append_cstr(&cl, md_col_sql(col));
         }
     }
     sb_append_null(&cl);
-    // ORDER BY created_at DESC is the single line that decides master
-    // order: newest first, so freshly created rows stay on page 1 even
-    // once seeded/backfill rows exist (id DESC put lexicographically
-    // large seed ids above random uuids). Every master table carries
-    // created_at; views are never master lists. Child lists are always
-    // loaded in full (they are bounded per master and the template
-    // windows them); only the master list takes a window.
+
     int nbinds = 0;
+    const char *limit_offset = "";
+    if (slice != NULL) {
+        limit_offset = temp_sprintf(" LIMIT %zu OFFSET %zu", slice->per_page, slice->offset);
+    }
     char *sql = temp_sprintf("SELECT %s FROM %s%s ORDER BY %s DESC%s;",
             cl.items, config->table,
             md_where(db, config, show_deleted, search, &nbinds),
             "created_at",
-            slice ? temp_sprintf(" LIMIT %zu OFFSET %zu", slice->per_page, slice->offset)
-                  : "");
+            limit_offset);
     sql_stmt stmt = {0};
     if (!sql_prepare(db, sql, &stmt)) {
         return false;
@@ -451,7 +499,7 @@ static bool md_load_master_with_children(db_t                  *db,
             row.values[i] = col_to_str(&stmt, i);
             row.disp[i]   = temp_strdup(row.values[i]);
         }
-        row.id = row.values[0];  /* column list starts with id_column */
+        row.id = row.values[0];
         row.children = malloc(config->children_count * sizeof(MD_ChildRows));
         row.children_count = config->children_count;
         for (size_t ci = 0; ci < config->children_count; ++ci) {
@@ -580,7 +628,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
         for (size_t ci = 0; ci < config->column_count; ++ci) {
             const MD_Column *col = &config->columns[ci];
             if (col->name && md_col_queryable(col)
-                && sv_eq(qcol_sv, sv_from_cstr(col->name))) {
+                    && sv_eq(qcol_sv, sv_from_cstr(col->name))) {
                 legacy_col = col;
                 qcol_name = col->name;
                 break;
@@ -600,7 +648,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     page_info_parse(sc->query_string, "page", &page_info);
     bool windowed = !fragment;
     if (windowed && !md_count_masters(db, config, show_deleted, &search,
-                                      &page_info.total)) {
+                &page_info.total)) {
         db_close(db);
         serve_error(sc, 500);
         return;
@@ -617,15 +665,15 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     Page_Info child_pages[child_slot_count];
     for (size_t ti = 0; ti < config->children_count; ++ti) {
         page_info_parse(sc->query_string,
-                        temp_sprintf("%s_page", config->children[ti].table),
-                        &child_pages[ti]);
+                temp_sprintf("%s_page", config->children[ti].table),
+                &child_pages[ti]);
     }
     MD_MasterRows *rows = md_master_rows_new();
     MD_FormCols form_cols = {0};
     bool ok = md_load_master_with_children(db, config, rows,
-                                           windowed ? &page_info : NULL,
-                                           show_deleted, &search)
-              && md_form_cols_load(db, config, lazy_cascade, &form_cols);
+            windowed ? &page_info : NULL,
+            show_deleted, &search)
+        && md_form_cols_load(db, config, lazy_cascade, &form_cols);
     if (ok) {
         for (size_t i = 0; i < config->column_count; ++i) {
             md_col_load_options(db, &config->columns[i]);
@@ -643,26 +691,50 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
         for (size_t ri = 0; ri < rows->count; ++ri) {
             MD_MasterRow *r = &rows->items[ri];
             for (size_t ci = 0; ci < config->column_count; ++ci) {
-                if (config->columns[ci].cell) continue;
+                const MD_Column *col = &config->columns[ci];
+                if (col->subcols != NULL && col->subcol_count > 0) {
+                    for (size_t p = 0; p < col->subcol_count; ++p) {
+                        const MD_Column *scol = &col->subcols[p];
+                        size_t slot = md_col_slot(config->columns, ci) + p;
+                        if (scol->type == COL_TYPE_DATE) {
+                            r->disp[slot] = (char *)md_date_human(r->values[slot]);
+                        } else if (scol->type == COL_TYPE_FK_SELECT) {
+                            r->disp[slot] = (char *)md_fk_display(db, scol, r->values[slot]);
+                        }
+                    }
+                    continue;
+                }
                 size_t slot = md_col_slot(config->columns, ci);
-                r->disp[slot] = config->columns[ci].type == COL_TYPE_DATE
-                    ? (char *)md_date_human(r->values[slot])
-                    : (char *)md_fk_display(db, &config->columns[ci],
-                                            r->values[slot]);
+                if (col->type == COL_TYPE_DATE) {
+                    r->disp[slot] = (char *)md_date_human(r->values[slot]);
+                } else {
+                    r->disp[slot] = (char *)md_fk_display(db, col, r->values[slot]);
+                }
             }
             for (size_t ti = 0; ti < config->children_count; ++ti) {
                 const MD_ChildTab *ct = &config->children[ti];
                 MD_ChildRows *cr = &r->children[ti];
                 for (size_t cj = 0; cj < cr->count; ++cj) {
                     for (size_t cci = 0; cci < ct->column_count; ++cci) {
-                        if (ct->columns[cci].cell) continue;
+                        const MD_Column *col = &ct->columns[cci];
+                        if (col->subcols != NULL && col->subcol_count > 0) {
+                            for (size_t p = 0; p < col->subcol_count; ++p) {
+                                const MD_Column *scol = &col->subcols[p];
+                                size_t slot = md_col_slot(ct->columns, cci) + p;
+                                if (scol->type == COL_TYPE_DATE) {
+                                    cr->items[cj].disp[slot] = (char *)md_date_human(cr->items[cj].values[slot]);
+                                } else if (scol->type == COL_TYPE_FK_SELECT) {
+                                    cr->items[cj].disp[slot] = (char *)md_fk_display(db, scol, cr->items[cj].values[slot]);
+                                }
+                            }
+                            continue;
+                        }
                         size_t slot = md_col_slot(ct->columns, cci);
-                        cr->items[cj].disp[slot] =
-                            ct->columns[cci].type == COL_TYPE_DATE
-                                ? (char *)md_date_human(cr->items[cj].values[slot])
-                                : (char *)md_fk_display(db,
-                                                        &ct->columns[cci],
-                                                        cr->items[cj].values[slot]);
+                        if (col->type == COL_TYPE_DATE) {
+                            cr->items[cj].disp[slot] = (char *)md_date_human(cr->items[cj].values[slot]);
+                        } else {
+                            cr->items[cj].disp[slot] = (char *)md_fk_display(db, col, cr->items[cj].values[slot]);
+                        }
                     }
                 }
             }
@@ -703,7 +775,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     // plain render lands on the same rows the user was looking at.
     const char *nojs_url = sc->query_string.count
         ? temp_sprintf("%s?%.*s&nojs=1", md_path,
-                       (int)sc->query_string.count, sc->query_string.data)
+                (int)sc->query_string.count, sc->query_string.data)
         : temp_sprintf("%s?nojs=1", md_path);
     if (!fragment) render_page_header(sb, config->title, md_path);
 #define OUT(buf, size) sb_append_buf(sb, buf, size);

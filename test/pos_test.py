@@ -95,6 +95,62 @@ def child_thead(html, table):
     end = html.find("</thead>", start)
     return html[content:end].count("<th")
 
+def test_composite_subcolumns_and_type_gender(checker, host, port, tmp):
+    c = checker.client(host, port)
+    c.login_as("sd.staff1", "posadmin1")
+
+    # 1. Verify /pos/users renders Type & Gender column and resolves dictionary FK
+    status, body = c.get("/pos/users")
+    checker.equal(status, 200, "pos/users loads successfully")
+
+    has_header = False
+    if "Type &amp; Gender" in body or "Type & Gender" in body:
+        has_header = True
+    checker.is_true(has_header, "users table has Type & Gender header")
+
+    # Verify dictionary label is resolved in display instead of raw uuid
+    has_resolved_fk = False
+    if "អ្នកគ្រប់គ្រង" in body or "ADMIN" in body or "CUSTOMER" in body:
+        has_resolved_fk = True
+    checker.is_true(has_resolved_fk, "FK in composite cell resolved to label")
+
+    # 2. Verify Create Form renders inputs for each sub-column
+    has_gender_input = False
+    if 'name="gender"' in body:
+        has_gender_input = True
+    checker.is_true(has_gender_input, "create form has gender select")
+
+    has_gender_option = False
+    if '<option value="MALE">MALE</option>' in body:
+        has_gender_option = True
+    checker.is_true(has_gender_option, "gender select has MALE option")
+
+    has_type_input = False
+    if 'name="user_type_dict_id"' in body:
+        has_type_input = True
+    checker.is_true(has_type_input, "create form has user_type_dict_id select")
+
+    has_raw_sql = True
+    if "category = 'USER_TYPE'" not in body:
+        has_raw_sql = False
+    checker.is_false(has_raw_sql, "raw sql where clause not leaked into html")
+
+    # 3. Verify Filter across all sub-columns
+    status_q, body_q = c.get("/pos/users?q=ADMIN")
+    checker.equal(status_q, 200, "search across sub-columns returns 200")
+
+    found_admin = False
+    if "sd.staff1" in body_q:
+        found_admin = True
+    checker.is_true(found_admin, "search finds row matching composite sub-column FK label")
+
+    status_g, body_g = c.get("/pos/users?q=MALE")
+    checker.equal(status_g, 200, "search gender returns 200")
+
+    found_gender = False
+    if "sd.staff1" in body_g:
+        found_gender = True
+    checker.is_true(found_gender, "search finds row matching composite sub-column choice value")
 
 def main():
     c.wait_ready()

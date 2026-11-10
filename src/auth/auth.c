@@ -260,7 +260,7 @@ static void auth_resolve(void) {
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE] =
             "SELECT u.id, u.name, u.email, u.profile_pic, "
-                "u.user_type_dict_id, u.status, COALESCE(r.role_name, ''), "
+                "u.user_type_dict_id, CASE u.status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'SUSPENDED' END, COALESCE(r.role_name, ''), "
                 "COALESCE(r.role_code, ''), COALESCE(ur.role_id, ''), "
                 "COALESCE(s.id, ''), "
                 "COALESCE(s.org_unit_id, u.org_unit_id, '') "
@@ -274,7 +274,7 @@ static void auth_resolve(void) {
             "WHERE u.id = ? AND u.deleted_at IS NULL LIMIT 1;",
         [SQL_MYSQL] =
             "SELECT u.id, u.name, u.email, u.profile_pic, "
-                "u.user_type_dict_id, u.status, COALESCE(r.role_name, ''), "
+                "u.user_type_dict_id, CASE u.status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'SUSPENDED' END, COALESCE(r.role_name, ''), "
                 "COALESCE(r.role_code, ''), COALESCE(ur.role_id, ''), "
                 "COALESCE(s.id, ''), "
                 "COALESCE(s.org_unit_id, u.org_unit_id, '') "
@@ -288,7 +288,7 @@ static void auth_resolve(void) {
             "WHERE u.id = ? AND u.deleted_at IS NULL LIMIT 1;",
         [SQL_POSTGRES] =
             "SELECT u.id, u.name, u.email, u.profile_pic, "
-                "u.user_type_dict_id, u.status, COALESCE(r.role_name, ''), "
+                "u.user_type_dict_id, CASE u.status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'SUSPENDED' END, COALESCE(r.role_name, ''), "
                 "COALESCE(r.role_code, ''), COALESCE(ur.role_id, ''), "
                 "COALESCE(s.id, ''), "
                 "COALESCE(s.org_unit_id, u.org_unit_id, '') "
@@ -703,17 +703,17 @@ void serve_auth_login_post(Serve_Context *sc) {
             [SQL_SQLITE]   = "SELECT id, password_hash, user_type_dict_id "
                              "FROM users "
                              "WHERE (username = ? OR email = ?) "
-                             "AND status = 'ACTIVE' AND deleted_at IS NULL "
+                             "AND status = 1 AND deleted_at IS NULL "
                              "LIMIT 1;",
             [SQL_MYSQL]    = "SELECT id, password_hash, user_type_dict_id "
                              "FROM users "
                              "WHERE (username = ? OR email = ?) "
-                             "AND status = 'ACTIVE' AND deleted_at IS NULL "
+                             "AND status = 1 AND deleted_at IS NULL "
                              "LIMIT 1;",
             [SQL_POSTGRES] = "SELECT id, password_hash, user_type_dict_id "
                              "FROM users "
                              "WHERE (username = $1 OR email = $2) "
-                             "AND status = 'ACTIVE' AND deleted_at IS NULL "
+                             "AND status = 1 AND deleted_at IS NULL "
                              "LIMIT 1;",
         };
         sql_stmt stmt = {0};
@@ -778,8 +778,10 @@ typedef struct {
 } Signup_Field;
 
 static const Signup_Field signup_fields[] = {
-    { "name",     "auth.su_name",        "ឈ្មោះពេញ",
-      "text",     "name", 0 },
+    { "first_name", "auth.su_name",        "ឈ្មោះ",
+      "text",     "given-name", 0 },
+    { "last_name",  "auth.su_last_name",   "ត្រកូល",
+      "text",     "family-name", 0 },
     { "username", "auth.label_username", "ឈ្មោះអ្នកប្រើ",
       "text",     "username", 0 },
     { "phone",    "auth.su_phone",       "លេខទូរស័ព្ទ",
@@ -810,15 +812,16 @@ void serve_auth_signup(Serve_Context *sc) {
 void serve_auth_signup_post(Serve_Context *sc) {
     String_View req  = sb_to_sv(sc->request);
     String_View body = sb_to_sv(sc->body);
-    String_View name     = form_text(req, body, "name");
+    String_View first_name = form_text(req, body, "first_name");
+    String_View last_name  = form_text(req, body, "last_name");
     String_View username = form_text(req, body, "username");
     String_View phone    = form_text(req, body, "phone");
     String_View email    = form_text(req, body, "email");
     String_View password = form_text(req, body, "password");
 
     const char *err = NULL;
-    if (name.count == 0 || username.count == 0 || phone.count == 0
-        || email.count == 0 || password.count == 0) {
+    if (first_name.count == 0 || last_name.count == 0 || username.count == 0
+        || phone.count == 0 || email.count == 0 || password.count == 0) {
         err = tr("auth.su_err_fill", "សូមបំពេញព័ត៌មានទាំងអស់");
     } else if (password.count < 6) {
         err = tr("auth.su_err_short",
@@ -915,20 +918,24 @@ void serve_auth_signup_post(Serve_Context *sc) {
         bool wrote = false;
         if (claim) {
             static const char *const q[SQL_LANG_COUNT] = {
-                [SQL_SQLITE]   = "UPDATE users SET name = ?, username = ?, "
+                [SQL_SQLITE]   = "UPDATE users SET first_name = ?, "
+                                 "last_name = ?, username = ?, "
                                  "email = ?, password_hash = ? WHERE id = ?;",
-                [SQL_MYSQL]    = "UPDATE users SET name = ?, username = ?, "
+                [SQL_MYSQL]    = "UPDATE users SET first_name = ?, "
+                                 "last_name = ?, username = ?, "
                                  "email = ?, password_hash = ? WHERE id = ?;",
-                [SQL_POSTGRES] = "UPDATE users SET name = $1, username = $2, "
-                                 "email = $3, password_hash = $4 WHERE id = $5;",
+                [SQL_POSTGRES] = "UPDATE users SET first_name = $1, "
+                                 "last_name = $2, username = $3, "
+                                 "email = $4, password_hash = $5 WHERE id = $6;",
             };
             sql_stmt stmt = {0};
             if (sql_prepare(db, q[db->lang], &stmt)
-                && sql_bind(&stmt, 1, SQL_SV(name))
-                && sql_bind(&stmt, 2, SQL_SV(username))
-                && sql_bind(&stmt, 3, SQL_SV(email))
-                && sql_bind(&stmt, 4, SQL_SV(sv_from_cstr(stored)))
-                && sql_bind(&stmt, 5, SQL_SV(sv_from_cstr(uid)))
+                && sql_bind(&stmt, 1, SQL_SV(first_name))
+                && sql_bind(&stmt, 2, SQL_SV(last_name))
+                && sql_bind(&stmt, 3, SQL_SV(username))
+                && sql_bind(&stmt, 4, SQL_SV(email))
+                && sql_bind(&stmt, 5, SQL_SV(sv_from_cstr(stored)))
+                && sql_bind(&stmt, 6, SQL_SV(sv_from_cstr(uid)))
                 && sql_final_step(&stmt)) {
                 wrote = true;
             }
@@ -936,24 +943,28 @@ void serve_auth_signup_post(Serve_Context *sc) {
         } else {
             static const char *const q[SQL_LANG_COUNT] = {
                 [SQL_SQLITE]   = "INSERT INTO users "
-                                 "(id, name, username, email, phone, "
-                                 "password_hash) VALUES (?, ?, ?, ?, ?, ?);",
+                                 "(id, first_name, last_name, username, "
+                                 "email, phone, password_hash) "
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?);",
                 [SQL_MYSQL]    = "INSERT INTO users "
-                                 "(id, name, username, email, phone, "
-                                 "password_hash) VALUES (?, ?, ?, ?, ?, ?);",
+                                 "(id, first_name, last_name, username, "
+                                 "email, phone, password_hash) "
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?);",
                 [SQL_POSTGRES] = "INSERT INTO users "
-                                 "(id, name, username, email, phone, "
-                                 "password_hash) VALUES ($1, $2, $3, $4, $5, $6);",
+                                 "(id, first_name, last_name, username, "
+                                 "email, phone, password_hash) "
+                                 "VALUES ($1, $2, $3, $4, $5, $6, $7);",
             };
             if (webc_uuid(uid)) {
                 sql_stmt stmt = {0};
                 if (sql_prepare(db, q[db->lang], &stmt)
                     && sql_bind(&stmt, 1, SQL_SV(sv_from_cstr(uid)))
-                    && sql_bind(&stmt, 2, SQL_SV(name))
-                    && sql_bind(&stmt, 3, SQL_SV(username))
-                    && sql_bind(&stmt, 4, SQL_SV(email))
-                    && sql_bind(&stmt, 5, SQL_SV(phone))
-                    && sql_bind(&stmt, 6, SQL_SV(sv_from_cstr(stored)))
+                    && sql_bind(&stmt, 2, SQL_SV(first_name))
+                    && sql_bind(&stmt, 3, SQL_SV(last_name))
+                    && sql_bind(&stmt, 4, SQL_SV(username))
+                    && sql_bind(&stmt, 5, SQL_SV(email))
+                    && sql_bind(&stmt, 6, SQL_SV(phone))
+                    && sql_bind(&stmt, 7, SQL_SV(sv_from_cstr(stored)))
                     && sql_final_step(&stmt)) {
                     wrote = true;
                 }

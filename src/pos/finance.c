@@ -11,33 +11,19 @@
 // restore buttons render and no write routes are registered.
 // =========================================================================
 
-static const char *fin_account_parts[] = { "account_code", "entry_type" };
-static const char *fin_account_labels[] = { "Account", "Entry" };
-static const MD_Cell fin_account_cell = {
-    .parts       = fin_account_parts,
-    .part_labels = fin_account_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
-static const char *fin_amount_parts[] = { "amount", "balance" };
-static const char *fin_amount_labels[] = { "Amount", "Balance" };
-static const MD_Cell fin_amount_cell = {
-    .parts       = fin_amount_parts,
-    .part_labels = fin_amount_labels,
-    .part_count  = 2,
-    .style       = "stack",
-};
-
 static MD_Column md_finance_columns[] = {
     { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
       .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
     { .name = "reference_type", .label = "Type", .type = COL_TYPE_TEXT,
       .nullable = false },   // ORDER_PAYMENT | EXPENSE | CASH_IN | CASH_OUT
-    { .name = "account_code", .label = "Account", .type = COL_TYPE_TEXT,
-      .nullable = false, .cell = &fin_account_cell },
-    { .name = "amount", .label = "Amounts", .type = COL_TYPE_NUM,
-      .nullable = false, .cell = &fin_amount_cell },
+    MD_STACK("Account",
+        MD_FIELD("account_code", "Account", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("entry_type", "Entry", COL_TYPE_TEXT, .nullable = false)
+    ),
+    MD_STACK("Amounts",
+        MD_FIELD("amount", "Amount", COL_TYPE_NUM, .nullable = false),
+        MD_FIELD("balance", "Balance", COL_TYPE_NUM, .nullable = false)
+    ),
     { .name = "description", .label = "Description", .type = COL_TYPE_TEXT,
       .nullable = true },
 };

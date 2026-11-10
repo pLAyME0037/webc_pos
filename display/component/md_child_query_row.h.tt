@@ -3,32 +3,30 @@
     <c> const MD_Column *fcol = &config->columns[ci]; </c>
     <td class="pl-3 py-1">
         <c>
-        if (fcol->name && md_col_queryable(fcol)) {
+        if (md_col_queryable(fcol)) {
+            const char *box_key = fcol->name;
+            if (box_key == NULL) {
+                box_key = fcol->label;
+            }
             String_View cbox = sv_from_cstr("");
             String_View shown;
             const char *shown_s;
-            form_find(query, temp_sprintf("q_%s", fcol->name), &cbox);
-            if (cbox.count) {
+            form_find(query, temp_sprintf("q_%s", box_key), &cbox);
+            if (cbox.count > 0) {
                 shown = cbox;
             } else {
                 shown = sv_from_cstr("");
-                if (qcol_name[0] && strcmp(qcol_name, fcol->name) == 0) {
+                if (qcol_name[0] != '\0' && strcmp(qcol_name, box_key) == 0) {
                     shown = sv_from_cstr(q_text);
                 }
             }
             shown_s = "";
-            if (shown.count) {
+            if (shown.count > 0) {
                 shown_s = temp_sprintf("%.*s", (int)shown.count, shown.data);
             }
         </c>
-        <!-- A fk_cascade column filters as free text, not a dropdown: its
-             option list is 14,858 rows (~1.7 MB) and shipping it here
-             would double the page for a control the JS cascade does not
-             fill either. The search builder already matches an FK column
-             against its live parent's LABEL via EXISTS, so typing part of
-             a Khmer village name narrows the list - and it costs nothing. -->
         <c> if (fcol->type == COL_TYPE_FK_SELECT && !fcol->fk_cascade) { </c>
-        <select name="q_<c> STR(fcol->name); </c>" form="md-query-form"
+        <select name="q_<c> STR(box_key); </c>" form="md-query-form"
                 data-md-qbox aria-label="Filter <c> ESCAPED(fcol->label); </c>"
                 class="w-full px-1 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
             <option value=""><c> ESCAPED(fcol->label); </c></option>
@@ -39,7 +37,7 @@
             </c>
             <option value="<c> ESCAPED(form_cols->items[fi].items[o].label); </c>"
                 <c>
-                if (shown_s[0] &&
+                if (shown_s[0] != '\0' &&
                     strcmp(form_cols->items[fi].items[o].label, shown_s) == 0) { 
                 </c> selected<c> } </c>>
                 <c> ESCAPED(form_cols->items[fi].items[o].label); </c>
@@ -49,10 +47,10 @@
             } </c>
         </select>
         <c> } else { </c>
-        <input type="search" name="q_<c> STR(fcol->name); </c>"
+        <input type="search" name="q_<c> STR(box_key); </c>"
                form="md-query-form" data-md-qbox
                value="<c> ESCAPED(shown_s); </c>"
-               placeholder="<c> if (fcol->cell && fcol->cell->part_count > 1) { </c><c> ESCAPED(md_cell_part_label(fcol->cell, 0)); </c><c> } else { </c><c> ESCAPED(fcol->label); </c><c> } </c>"
+               placeholder="<c> if (fcol->subcols != NULL && fcol->subcol_count > 1) { </c><c> ESCAPED(md_cell_part_label(fcol, 0)); </c><c> } else { </c><c> ESCAPED(fcol->label); </c><c> } </c>"
                aria-label="Search <c> ESCAPED(fcol->label); </c>"
                class="w-full px-1 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
         <c> }
