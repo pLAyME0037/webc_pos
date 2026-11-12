@@ -100,7 +100,7 @@
                                     <img data-img-preview alt="" class="hidden absolute inset-0 w-full h-full object-cover">
                                 </div>
                                 <div class="flex flex-col gap-0.5 items-start min-w-0">
-                                    <label class="relative inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
+                                    <label class="relative inline-flex items-center gap-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                         Choose
                                         <input name="<c> ESCAPED(scol->name); </c>"
@@ -158,7 +158,7 @@
                             <img data-img-preview alt="" class="hidden absolute inset-0 w-full h-full object-cover">
                         </div>
                         <div class="flex flex-col gap-0.5 items-start min-w-0">
-                            <label class="relative inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
+                            <label class="relative inline-flex items-center gap-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                 Choose
                                 <input name="<c> ESCAPED(form_cols.items[fi].col->name); </c>"
@@ -245,6 +245,9 @@
     <table class="w-full text-left border-collapse master-table">
         <thead class="bg-slate-100 dark:bg-slate-900 dark:text-white text-slate-800">
             <tr class="border-b border-gray-200 dark:border-gray-700">
+                <th class="py-1 pl-3 font-semibold">
+                    No
+                </th>
                 <c> for (size_t i = 0; i < config->column_count; ++i) { </c>
                 <th class="py-1 pl-3 font-semibold">
                     <c> ESCAPED(config->columns[i].label); </c>
@@ -261,13 +264,13 @@
                 <c> } </c>
             </tr>
             <c> md_query_row(sb, config, &form_cols, md_path, sc->query_string,
-                            q_text, qcol_name, search.term_count > 0); </c>
+                             q_text, qcol_name, search.term_count > 0); </c>
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700">
 <c> } </c>
             <c> if (rows->count == 0) { </c>
             <tr>
-                <td colspan="<c> INT(config->column_count + 1); </c>"
+                <td colspan="<c> INT(config->column_count + 2); </c>"
                     class="pl-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 text-center">
                     No <c> ESCAPED(config->title); </c> yet.
                 </td>
@@ -276,15 +279,21 @@
                 <c> for (size_t ri = 0; ri < rows->count; ++ri) { </c>
                 <tr class="<c> if (show_deleted) { </c>hover:bg-red-100 dark:hover:bg-red-800 bg-red-50 dark:bg-red-900<c> } else { </c>hover:bg-gray-100 dark:hover:bg-gray-700<c> } </c>"
                     data-row-id="<c> STR(rows->items[ri].id); </c>">
+                    <td class="pl-3 py-1 text-gray-700 dark:text-gray-200">
+                        <c> INT(ri + 1); </c>
+                    </td>
                     <c> for (size_t ci = 0; ci < config->column_count; ++ci) { </c>
                     <td class="pl-3 py-1 text-gray-700 dark:text-gray-200">
-                        <c> if (config->columns[ci].subcols != NULL && config->columns[ci].subcol_count > 0) { </c>
-                            <c> STR(md_cell_render(&config->columns[ci],
-                                   rows->items[ri].values,
-                                   md_col_slot(config->columns, ci))); </c>
-                        <c> } else { </c>
-                            <c> ESCAPED(rows->items[ri].disp[md_col_slot(config->columns, ci)]); </c>
-                        <c> } </c>
+                        <c> 
+                        if (config->columns[ci].subcols != NULL &&
+                            config->columns[ci].subcol_count > 0) {
+                            STR(md_cell_render(&config->columns[ci],
+                                               rows->items[ri].values,
+                                               md_col_slot(config->columns, ci)));
+                        } else {
+                            ESCAPED(rows->items[ri].disp[md_col_slot(config->columns, ci)]);
+                        }
+                        </c>
                     </td>
                     <c> } </c><td class="pl-3 py-1 whitespace-nowrap">
                         <div class="flex items-center gap-1">
@@ -352,7 +361,7 @@
                 </tr>
             <c> if (!config->read_only && !config->create_only) { </c>
             <tr class="md-master-edit-row hidden">
-                <td colspan="<c> INT(config->column_count + 1); </c>" class="pl-3 py-1 bg-amber-50 dark:bg-gray-900">
+                <td colspan="<c> INT(config->column_count + 2); </c>" class="pl-3 py-1 bg-amber-50 dark:bg-gray-900">
                     <form id="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
                           method="POST"
                           action="<c> STR(config->crud_path); </c>/<c> STR(rows->items[ri].id); </c>/update?redirect=<c> STR(md_path); </c>"
@@ -386,7 +395,7 @@
                                          class="<c> if (!has_img) { </c>hidden <c> } </c>absolute inset-0 w-full h-full object-cover">
                                 </div>
                                 <div class="flex flex-col gap-0.5 items-start min-w-0">
-                                    <label class="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
+                                    <label class="inline-flex items-center gap-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                         Choose
                                         <input form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
@@ -459,7 +468,7 @@
                                      class="<c> if (!has_img) { </c>hidden <c> } </c>absolute inset-0 w-full h-full object-cover">
                             </div>
                             <div class="flex flex-col gap-0.5 items-start min-w-0">
-                                <label class="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
+                                <label class="inline-flex items-center gap-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 cursor-pointer">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                     Choose
                                     <input form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
@@ -480,17 +489,17 @@
                             <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
                                     data-geo="province" disabled
                                     class="w-full mb-1 px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                                <option value="">— Province —</option>
+                                <option value="">Province</option>
                             </select>
                             <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
                                     data-geo="district" disabled
                                     class="w-full mb-1 px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                                <option value="">— District —</option>
+                                <option value="">District</option>
                             </select>
                             <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
                                     data-geo="commune" disabled
                                     class="w-full mb-1 px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
-                                <option value="">— Commune —</option>
+                                <option value="">Commune</option>
                             </select>
                             <select form="md-m-<c> STR(config->table); </c>-<c> STR(rows->items[ri].id); </c>"
                                     name="<c> ESCAPED(config->columns[ci].name); </c>"
@@ -584,7 +593,7 @@
             <tr class="detail-panel-row" 
                 data-master-id="<c> STR(rows->items[ri].id); </c>" 
                 style="display: none;">
-                <td colspan="<c> INT(config->column_count + 1); </c>" 
+                <td colspan="<c> INT(config->column_count + 2); </c>" 
                     class="px-0 py-0">
                     <div class="detail-panel bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
                         <div class="flex border-b border-gray-200 dark:border-gray-700 flex-wrap">

@@ -479,12 +479,13 @@ def main():
     # ---- geo cascade: lazy leaf + <noscript> escape hatch --------------
     # The village select ships only "None" server-side (GeoCascade.js fills
     # it per commune), so a scripting-off browser could never satisfy the
-    # NOT NULL village_id on staff. The page answers a <noscript> meta
-    # refresh to ?nojs=1, where the full list is rendered instead - and
-    # must NOT re-offer that refresh, or it would bounce forever.
-    st, body, _ = c.get("/pos/staff")
+    # NOT NULL village_id. staff dropped its village in the schema fix, so
+    # the cascade host is now /pos/users (village_id, fk_cascade). The page
+    # answers a <noscript> meta refresh to ?nojs=1, where the full list is
+    # rendered instead - and must NOT re-offer that refresh, forever loop.
+    st, body, _ = c.get("/pos/users")
     html = body.decode()
-    t.chk("staff page renders (cascade)", st, 200)
+    t.chk("users page renders (cascade)", st, 200)
     leaf = re.search(r'<select[^>]*name="village_id"[^>]*>(.*?)</select>',
                      html, re.S)
     t.chk("cascade leaf ships no village options",
@@ -493,10 +494,10 @@ def main():
     t.chk("cascade page offers the nojs escape hatch", refresh is not None, True)
     if refresh:
         target = refresh.group(1)
-        t.chk("nojs target keeps the path", target.split("?")[0], "/pos/staff")
+        t.chk("nojs target keeps the path", target.split("?")[0], "/pos/users")
         t.chk("nojs target carries the flag", target.endswith("nojs=1"), True)
 
-    st, plain, _ = c.get("/pos/staff?nojs=1")
+    st, plain, _ = c.get("/pos/users?nojs=1")
     ph = plain.decode()
     t.chk("nojs page renders (200)", st, 200)
     t.chk("nojs page does not re-offer the refresh (no loop)",

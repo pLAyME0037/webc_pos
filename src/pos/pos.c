@@ -28,28 +28,23 @@ MD_Column md_pos_users_columns[] = {
         MD_FIELD("last_name", "Last Name", COL_TYPE_TEXT, .nullable = false),
         MD_FIELD("username", "Username", COL_TYPE_TEXT, .nullable = false),
         MD_CHOICE("status", "Status", ((const char*[]) {
-            "ACTIVE",
-            "INACTIVE",
-            "SUSPENDED",
-            NULL
+            "ACTIVE", "INACTIVE", "SUSPENDED", NULL
         }),
                   .read_sql = "CASE status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'SUSPENDED' END")
     ),
     MD_STACK("Type & Gender",
         MD_CHOICE("gender", "Gender", ((const char*[]) {
-            "MALE",
-            "FEMALE",
-            "NON",
-            NULL
+            "MALE", "FEMALE", "NON", NULL
         }),
                   .read_sql = "CASE gender WHEN 1 THEN 'MALE' WHEN 0 THEN 'FEMALE' ELSE 'NON' END"),
         MD_FK("user_type_dict_id", "Type", "dictionaries", "label",
               .fk_where = "category = 'USER_TYPE'", .nullable = false)
     ),
-    MD_FIELD("phone", "Phone", COL_TYPE_TEXT, .nullable = false),
-    MD_FIELD("email", "Email", COL_TYPE_TEXT, .nullable = true),
+    MD_STACK("Contact",
+        MD_FIELD("phone", "Phone", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("email", "Email", COL_TYPE_TEXT, .nullable = true),
+    ),
     MD_FK("org_unit_id", "Branch", "org_units", "ou_name", .nullable = true),
-    MD_FK("customer_id", "Customer", "customers", "id", .nullable = true),
     MD_FK("village_id", "Village", "villages", "name_kh", .nullable = true, .fk_cascade = 1),
     MD_ACTIVITY("Activity",
         MD_FIELD("created_at", "Joined", COL_TYPE_DATE),
@@ -233,13 +228,18 @@ defer:
 }
 
 // role links under a user: role_id FK + link timestamp.
-static MD_Column md_pos_user_role_columns[] = {
-    { .name = "role_id", .label = "Role", .type = COL_TYPE_FK_SELECT,
-      .nullable = false, .fk_table = "roles", .fk_label = "role_name" },
+static MD_Column pos_user_role_columns[] = {
+    MD_FK("role_id", "Roles", "roles", "role_name", .nullable = false),
     { .name = "created_at", .label = "Linked", .type = COL_TYPE_DATE,
-      .nullable = false, .computed = 1 },
+        .nullable = false, .computed = 1 },
 };
-static const size_t md_pos_user_role_columns_count = ARRAY_LEN(md_pos_user_role_columns);
+
+static MD_Column pos_user_cust_columns[] = {
+    MD_FK("customer_id", "Type", "customers", "customer_type_dict_id",
+          .nullable = true),
+    /* MD_FIELD("customer_type_dict_id", "Type", COL_TYPE_TEXT, .nullable = true), */
+    /* MD_FIELD("loyalty_points", "Points", COL_TYPE_NUM), */
+};
 
 void serve_pos_users(Serve_Context *sc) {
     // Children: the editable relations of an account (role links). Staff
@@ -252,10 +252,20 @@ void serve_pos_users(Serve_Context *sc) {
             .fk_column    = "user_id",
             .id_column    = "id",
             .crud_path    = "/pos/user_roles",
-            .columns      = md_pos_user_role_columns,
-            .column_count = md_pos_user_role_columns_count,
+            .columns      = pos_user_role_columns,
+            .column_count = ARRAY_LEN(pos_user_role_columns),
             .soft_delete  = 1,
-        },
+        }, 
+        /* { */
+        /*     .table        = "customers", */
+        /*     .title        = "Customers", */
+        /*     .fk_column    = "customer_id", */
+        /*     .id_column    = "id", */
+        /*     .crud_path    = "/pos/customers", */
+        /*     .columns      = pos_user_cust_columns, */
+        /*     .column_count = ARRAY_LEN(pos_user_cust_columns), */
+        /*     .soft_delete  = 1, */
+        /* }, */
     };
     MD_MasterConfig config = {
         .table          = "users",
@@ -263,7 +273,7 @@ void serve_pos_users(Serve_Context *sc) {
         .id_column      = "id",
         .crud_path      = "/pos/users",
         .columns        = md_pos_users_columns,
-        .column_count   = md_pos_users_columns_count,
+        .column_count   = ARRAY_LEN(md_pos_users_columns),
         .children       = children,
         .children_count = ARRAY_LEN(children),
         .soft_delete    = 1,

@@ -255,16 +255,16 @@ Upload_Result save_uploaded_image(String_View *value) {
     return UPLOAD_OK;
 }
 
-bool route_id_parse(String_View seg, Route_Id *out)
-{
+bool route_id_parse(String_View seg, Route_Id *out) {
     if (seg.count == 0 || seg.count >= 128) return false;
+    if (memchr(seg.data, '/', seg.count) != NULL) return false;
 
     Route_Id id = { .kind = ID_STRING, .raw = seg };
 
     // All-digits (max 18 so it fits long long without overflow) -> ID_INT.
     long long value = 0;
-    size_t digits = 0;
-    bool is_int = true;
+    size_t digits   = 0;
+    bool is_int     = true;
     for (size_t i = 0; i < seg.count; ++i) {
         char ch = seg.data[i];
         if (ch < '0' || ch > '9') { is_int = false; break; }

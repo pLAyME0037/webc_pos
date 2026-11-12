@@ -17,14 +17,17 @@
 // =========================================================================
 
 MD_Column md_alerts_columns[] = {
-    MD_FK("user_id", "User", "users", "username", .nullable = true),
+    // user FK label is users.name (0003 GENERATED TRIM(first..last)):
+    // rows show the person, not the login. Flags stack stays at td[3]
+    // (user, order, type, FLAGS, payload) - the contract test pins it.
+    MD_FK("user_id", "User", "users", "name", .nullable = true),
     MD_FK("order_id", "Order", "orders", "order_number", .nullable = true),
     MD_FIELD("alert_type", "Type", COL_TYPE_TEXT, .nullable = false),
-    MD_FIELD("raw_payload", "Payload", COL_TYPE_TEXTAREA, .nullable = false),
     MD_STACK("Status",
         MD_CHOICE("is_seen", "Seen", ((const char*[]){"0", "1", NULL}), .nullable = false),
         MD_CHOICE("is_sent", "Sent", ((const char*[]){"0", "1", NULL}), .nullable = false)
     ),
+    MD_FIELD("raw_payload", "Payload", COL_TYPE_TEXTAREA, .nullable = false),
 };
 const size_t md_alerts_columns_count = ARRAY_LEN(md_alerts_columns);
 

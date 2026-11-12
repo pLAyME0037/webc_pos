@@ -260,43 +260,6 @@ defer:
     return result;
 }
 
-bool soft_delete_user(db_t *db, String_View id) {
-    bool result = true;
-    sql_stmt stmt = {0};
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "UPDATE users "
-                         "SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
-                         "WHERE id = ?;",
-        [SQL_MYSQL]    = "UPDATE users SET deleted_at = UTC_TIMESTAMP() "
-                         "WHERE id = ?;",
-        [SQL_POSTGRES] = "UPDATE users SET deleted_at = now() WHERE id = $1;",
-    };
-
-    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
-    if (!sql_final_step(&stmt))               return_defer(false);
-
-defer:
-    sql_finalize(&stmt);
-    return result;
-}
-
-static bool restore_user(db_t *db, String_View id) {
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "UPDATE users SET deleted_at = NULL WHERE id = ?;",
-        [SQL_MYSQL]    = "UPDATE users SET deleted_at = NULL WHERE id = ?;",
-        [SQL_POSTGRES] = "UPDATE users SET deleted_at = NULL WHERE id = $1;",
-    };
-    sql_stmt stmt = {0};
-    bool result = true;
-    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
-    if (!sql_final_step(&stmt))               return_defer(false);
-defer:
-    sql_finalize(&stmt);
-    return result;
-}
-
 bool delete_user(db_t *db, String_View id) {
     bool result = true;
     sql_stmt stmt = {0};
@@ -320,4 +283,9 @@ defer:
 // phone is required (0007) - every users form carries the input.
 static const char *fields[] = { "first_name", "last_name", "username", "email", "phone" };
 static const char *opt_fields[] = { "profile_pic" };
-SERVE_CRUD(users, user, Users, User, fields, opt_fields)
+
+SERVE_READ(users, Users);
+SERVE_CREATE(users, user, fields, opt_fields);
+SERVE_UPDATE(users, user, fields, opt_fields);
+SERVE_EDIT(users, user, Users, User);
+SERVE_DELETE(users, user);

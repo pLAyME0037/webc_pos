@@ -206,8 +206,7 @@ void serve_pos_products(Serve_Context *sc) {
             .columns      = md_pos_variant_columns,
             .column_count = md_pos_variant_columns_count,
             .soft_delete  = 1,
-        },
-        {
+        }, {
             .table        = "inventory_stocks",
             .title        = "Stock",
             .fk_column    = "product_id",

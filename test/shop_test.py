@@ -130,7 +130,10 @@ def main():
     st, body, _ = c.get(f"/?cat={cat_id}")
     html = body.decode()
     t.chk("category filter page", st, 200)
-    shown = set(re.findall(r'text-overlay0 truncate">([^<]+) · ', html))
+    # the card markup wraps onto its own line now: allow the whitespace
+    # between the attr and the sku text
+    shown = set(re.findall(r'text-overlay0 truncate">\s*([^<]+?)\s*· ',
+                           html))
     t.chk("category filter renders rows", len(shown) >= 1, True)
     t.chk("category filter only own skus", shown <= cat_skus, True)
 

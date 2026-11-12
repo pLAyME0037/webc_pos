@@ -51,8 +51,8 @@ static bool parse_uri_id(String_View path,
     char prefix_buf[128];
     snprintf(prefix_buf, sizeof(prefix_buf), "%.*s/", (int)path.count, path.data);
     String_View prefix = sv_from_cstr(prefix_buf);
-    if (uri.count <= prefix.count
-        || memcmp(uri.data, prefix.data, prefix.count) != 0) {
+    if (uri.count <= prefix.count ||
+        memcmp(uri.data, prefix.data, prefix.count) != 0) {
         return false;
     }
     String_View suffix_sv;
@@ -67,6 +67,7 @@ static bool parse_uri_id(String_View path,
         .data  = uri.data + prefix.count,
         .count = uri.count - prefix.count - suffix_sv.count,
     };
+    if (memchr(id_sv.data, '/', id_sv.count) != NULL) return false;
     return route_id_parse(id_sv, id);
 }
 
@@ -209,14 +210,13 @@ void route_initialize(void) {
     route_new(&routes, "/notes/create", NULL, "POST", ROUTE_EXACT,   serve_notes_create);
     route_new(&routes, "/notes", "/edit",   "GET",  ROUTE_ID_ACTION, serve_notes_edit);
     route_new(&routes, "/notes", "/update", "POST", ROUTE_ID_ACTION, serve_notes_update);
-    route_new(&routes, "/notes", "/softdel", "POST", ROUTE_ID_ACTION, serve_notes_soft_delete);
     route_new(&routes, "/notes", "/delete", "POST", ROUTE_ID_ACTION, serve_notes_delete);
 
     route_new(&routes, "/users", NULL,      "GET",  ROUTE_EXACT,     serve_users_read);
     route_new(&routes, "/users/create", NULL, "POST", ROUTE_EXACT,   serve_users_create);
     route_new(&routes, "/users", "/edit",   "GET",  ROUTE_ID_ACTION, serve_users_edit);
     route_new(&routes, "/users", "/update", "POST", ROUTE_ID_ACTION, serve_users_update);
-    route_new(&routes, "/users", "/delete", "POST", ROUTE_ID_ACTION, serve_users_soft_delete);
+    route_new(&routes, "/users", "/delete", "POST", ROUTE_ID_ACTION, serve_users_delete);
 
     // POS showcase pages (composite multi-field columns), same route shape
     // Phase 16: the geo redo - four admin-area masters replace the old

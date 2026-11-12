@@ -95,25 +95,25 @@ function iuBuildModal(state) {
     const m = document.createElement('div');
     m.className = 'fixed inset-0 z-50 hidden';
     m.innerHTML =
-        '<div class="absolute inset-0 bg-black/60" data-iu-backdrop></div>' +
-        '<div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">' +
-        '  <div class="pointer-events-auto bg-white dark:bg-gray-800 rounded-lg p-4 shadow-xl w-full max-w-sm">' +
-        '    <h3 class="text-sm font-semibold text-gray-800 dark:text-white mb-2">Crop photo</h3>' +
-        '    <div data-iu-viewport class="relative overflow-hidden w-full aspect-square rounded ' +
-             'bg-gray-100 dark:bg-gray-700 cursor-move touch-none select-none">' +
-        '      <img data-iu-img alt="" class="absolute left-0 top-0 origin-top-left max-w-none pointer-events-none" draggable="false">' +
-        '    </div>' +
-        '    <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-2">Zoom' +
-        '      <input data-iu-zoom type="range" min="100" max="400" value="100" class="flex-1">' +
-        '    </label>' +
-        '    <div class="flex justify-end gap-2 mt-3">' +
-        '      <button type="button" data-iu-cancel class="px-3 py-1.5 rounded text-sm ' +
-              'bg-gray-500 hover:bg-gray-600 text-white">Cancel</button>' +
-        '      <button type="button" data-iu-apply class="px-3 py-1.5 rounded text-sm ' +
-              'bg-indigo-600 hover:bg-indigo-700 text-white">Apply</button>' +
-        '    </div>' +
-        '  </div>' +
-        '</div>';
+      '<div class="absolute inset-0 bg-black/60" data-iu-backdrop></div>'
+    + '<div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">'
+    + '  <div class="pointer-events-auto bg-white dark:bg-gray-800 rounded-lg p-4 shadow-xl w-full max-w-sm">'
+    + '    <h3 class="text-sm font-semibold text-gray-800 dark:text-white mb-2">Crop photo</h3>'
+    + '    <div data-iu-viewport class="relative overflow-hidden w-full aspect-square rounded '
+    +      'bg-gray-100 dark:bg-gray-700 cursor-move touch-none select-none">'
+    + '      <img data-iu-img alt="" class="absolute left-0 top-0 origin-top-left max-w-none pointer-events-none" draggable="false">'
+    + '    </div>'
+    + '    <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-2">Zoom'
+    + '      <input data-iu-zoom type="range" min="100" max="400" value="100" class="flex-1">'
+    + '    </label>'
+    + '    <div class="flex justify-end gap-2 mt-3">'
+    + '      <button type="button" data-iu-cancel class="px-3 py-1.5 rounded text-sm '
+    +       'bg-gray-500 hover:bg-gray-600 text-white">Cancel</button>'
+    + '      <button type="button" data-iu-apply class="px-3 py-1.5 rounded text-sm '
+    +       'bg-indigo-600 hover:bg-indigo-700 text-white">Apply</button>'
+    + '    </div>'
+    + '  </div>'
+    + '</div>';
     document.body.appendChild(m);
 
     state.modal = m;

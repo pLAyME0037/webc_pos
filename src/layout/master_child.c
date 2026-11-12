@@ -236,6 +236,20 @@ static const char *md_fk_display(db_t *db, const MD_Column *col, const char *id)
     return result;
 }
 
+static void md_form_cols_free(MD_FormCols *form_col) {
+    if (form_col->items != NULL) {
+        for (size_t i = 0; i < form_col->count; ++i) {
+            if (form_col->items[i].items != NULL) {
+                free(form_col->items[i].items);
+            }
+        }
+        free(form_col->items);
+        form_col->items    = NULL;
+        form_col->count    = 0;
+        form_col->capacity = 0;
+    }
+}
+
 static bool md_form_cols_load(db_t *db, const MD_MasterConfig *config,
                               bool lazy_cascade, MD_FormCols *out) {
     for (size_t i = 0; i < config->column_count; ++i) {
@@ -379,22 +393,30 @@ static void md_append_col_search(String_Builder *cond, db_t *db,
 // counts LIKE placeholders: bind each term's pattern to the slots it
 // owns right after sql_prepare (md_bind_search).
 static const char *md_where(db_t *db, const MD_MasterConfig *config,
-        bool show_deleted, MD_Search *search,
-        int *nbinds)
+                            bool show_deleted, MD_Search *search,
+                            int *nbinds)
 {
-    if (nbinds) *nbinds = 0;
+    if (nbinds != NULL) {
+        *nbinds = 0;
+    }
     String_Builder sb = {0};
     const char *joiner = " WHERE ";
     if (config->soft_delete) {
-        sb_append_cstr(&sb, show_deleted ? " WHERE deleted_at IS NOT NULL"
-                : " WHERE deleted_at IS NULL");
+        if (show_deleted) {
+            sb_append_cstr(&sb, " WHERE deleted_at IS NOT NULL");
+        } else {
+            sb_append_cstr(&sb, " WHERE deleted_at IS NULL");
+        }
         joiner = " AND ";
     }
+
+    int total_binds = 0;
     if (md_search_on(search)) {
         for (size_t t = 0; t < search->term_count; ++t) {
             const MD_SearchTerm *term = &search->terms[t];
             String_Builder cond = {0};
-            int n = 0;
+            int term_start = total_binds;
+
             for (size_t ci = 0; ci < config->column_count; ++ci) {
                 const MD_Column *col = &config->columns[ci];
                 if (!md_col_queryable(col)) continue;
@@ -405,25 +427,31 @@ static const char *md_where(db_t *db, const MD_MasterConfig *config,
                     sb_append_cstr(&cond, "(");
                     for (size_t p = 0; p < col->subcol_count; ++p) {
                         if (p > 0) sb_append_cstr(&cond, " OR ");
-                        md_append_col_search(&cond, db, config->table, &col->subcols[p], &n);
+                        md_append_col_search(&cond, db, config->table, &col->subcols[p], &total_binds);
                     }
                     sb_append_cstr(&cond, ")");
                 } else {
-                    md_append_col_search(&cond, db, config->table, col, &n);
+                    md_append_col_search(&cond, db, config->table, col, &total_binds);
                 }
             }
-            if (cond.count) {
+
+            if (cond.count > 0) {
                 sb_append_cstr(&sb, joiner);
                 sb_append_cstr(&sb, "(");
                 sb_append_buf(&sb, cond.items, cond.count);
                 sb_append_cstr(&sb, ")");
                 joiner = " AND ";
             }
-            search->terms[t].nbinds = n;
-            if (nbinds) *nbinds += n;
+
+            search->terms[t].nbinds = total_binds - term_start;
             sb_free(cond);
         }
     }
+
+    if (nbinds != NULL) {
+        *nbinds = total_binds;
+    }
+
     sb_append_null(&sb);
     char *out = temp_strdup(sb.items);
     sb_free(sb);
@@ -476,10 +504,10 @@ static bool md_load_master_with_children(db_t                  *db,
         limit_offset = temp_sprintf(" LIMIT %zu OFFSET %zu", slice->per_page, slice->offset);
     }
     char *sql = temp_sprintf("SELECT %s FROM %s%s ORDER BY %s DESC%s;",
-            cl.items, config->table,
-            md_where(db, config, show_deleted, search, &nbinds),
-            "created_at",
-            limit_offset);
+                             cl.items, config->table,
+                             md_where(db, config, show_deleted, search, &nbinds),
+                             "created_at", limit_offset);
+    sb_free(cl);
     sql_stmt stmt = {0};
     if (!sql_prepare(db, sql, &stmt)) {
         return false;
@@ -509,10 +537,12 @@ static bool md_load_master_with_children(db_t                  *db,
             if (!load_child_rows(db, &config->children[ci], row.id,
                                  show_deleted, &row.children[ci])) {
                 free(row.values);
+                free(row.disp);
                 for (size_t ci2 = 0; ci2 <= ci; ++ci2) {
                     MD_ChildRows *cr = &row.children[ci2];
                     for (size_t j = 0; j < cr->count; ++j) {
                         free(cr->items[j].values);
+                        free(cr->items[j].disp);
                     }
                     free(cr->items);
                 }
@@ -755,6 +785,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     }
     db_close(db);
     if (!ok) {
+        md_form_cols_free(&form_cols);
         md_master_rows_free(rows);
         serve_error(sc, 500);
         return;
@@ -773,10 +804,14 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     // Target of the <noscript> meta refresh on a cascade page: this exact
     // URL with nojs=1 appended, preserving page/deleted/q/... so the
     // plain render lands on the same rows the user was looking at.
-    const char *nojs_url = sc->query_string.count
-        ? temp_sprintf("%s?%.*s&nojs=1", md_path,
-                (int)sc->query_string.count, sc->query_string.data)
-        : temp_sprintf("%s?nojs=1", md_path);
+    const char *nojs_url;
+    if (sc->query_string.count) {
+        nojs_url = temp_sprintf("%s?%.*s&nojs=1", md_path,
+                                 (int)sc->query_string.count,
+                                 sc->query_string.data);
+    } else {
+        nojs_url = temp_sprintf("%s?nojs=1", md_path);
+    }
     if (!fragment) render_page_header(sb, config->title, md_path);
 #define OUT(buf, size) sb_append_buf(sb, buf, size);
 #define INT(v) sb_append_cstr(sb, temp_sprintf("%zu", v));
@@ -792,6 +827,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
 #undef ESCAPED
 #undef PAGE_TITLE
     if (!fragment) render_page_footer(sb);
+    md_form_cols_free(&form_cols);
     md_master_rows_free(rows);
     http_render_response(sc, 200, "text/html", sb_to_sv(*sb));
 }

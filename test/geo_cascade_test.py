@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from testlib import Client, Checker  # noqa: E402
@@ -273,8 +274,9 @@ CREATE_WALK_JS = r"""
         .includes(inp.type)) continue;
     if (inp.type === 'date') { inp.value = '2026-02-03'; continue; }
     if (inp.hasAttribute('required') ||
-        ['staff_code','first_name','last_name'].includes(inp.name)) {
-      inp.value = inp.name === 'staff_code' ? marker : 'geoc_' + inp.name;
+        ['staff_code','first_name','last_name','username'].includes(inp.name)) {
+      inp.value = ['staff_code','username'].includes(inp.name)
+          ? marker : 'geoc_' + inp.name;
     }
   }
   // required selects: the caller picks values no live row holds
@@ -350,8 +352,11 @@ CREATE_WALK_JS = r"""
 # other branch walks village -> commune -> district -> province. The create
 # fix only touched the !stored path, but this pins both.
 EDIT_RESTORE_JS = """
-(() => {
-  const btn = document.querySelector('.master-edit-btn');
+((rowId) => {
+  const scope = rowId
+      ? document.querySelector('[data-row-id="' + rowId + '"]')
+      : document;
+  const btn = scope && scope.querySelector('.master-edit-btn');
   if (!btn) return { fatal: 'no edit button on page' };
   btn.click();
   const forms = Array.from(document.querySelectorAll('form[data-md-op="update"]'))
@@ -374,7 +379,7 @@ EDIT_RESTORE_JS = """
     });
   }
   return out;
-})()
+})(%s)
 """
 
 
@@ -423,7 +428,9 @@ def main():
 
     with Browser(exe) as b:
         b.set_cookies(c.cookies, base)
-        b.goto(f"{base}/pos/staff")
+        # staff dropped village_id in the 0003 schema fix - the cascade
+        # leaf lives on /pos/users now (village_id, fk_cascade).
+        b.goto(f"{base}/pos/users")
 
         # ---- the dataset the whole picker runs off --------------------
         data = b.eval_js("""
@@ -471,6 +478,7 @@ def main():
         preset = pick_fk_values(choices)
         walked = b.eval_js(CREATE_WALK_JS % json.dumps(preset))
         t.chk("cascade walk completed", walked.get("fatal"), None)
+        marker = walked.get("marker")
         if walked.get("fatal"):
             print("  walk state:", json.dumps(walked, ensure_ascii=False))
         else:
@@ -508,9 +516,9 @@ def main():
                 try:
                     conn.execute("PRAGMA busy_timeout=5000")
                     row = conn.execute(
-                        "SELECT s.village_id, v.name_kh FROM staff s "
-                        "JOIN villages v ON v.id = s.village_id "
-                        "WHERE s.staff_code = ?", (marker,)).fetchone()
+                        "SELECT u.village_id, v.name_kh FROM users u "
+                        "JOIN villages v ON v.id = u.village_id "
+                        "WHERE u.username = ?", (marker,)).fetchone()
                 finally:
                     conn.close()
                 t.chk("created row persisted", row is not None, True)
@@ -521,7 +529,22 @@ def main():
                           bool(row[1] and row[1].strip()), True)
 
         # ---- the edit side must still work (regression guard) ---------
-        edit = b.eval_js(EDIT_RESTORE_JS)
+        # target the row the walk just created: it carries a stored
+        # village, which is what restore() has to walk back up.
+        uid = None
+        if marker:
+            conn = sqlite3.connect(DB, timeout=10)
+            try:
+                conn.execute("PRAGMA busy_timeout=5000")
+                r = conn.execute("SELECT id FROM users WHERE username = ?",
+                                 (marker,)).fetchone()
+                uid = r[0] if r else None
+            finally:
+                conn.close()
+            # uuid ids sort DESC arbitrarily, so the fresh row can land on
+            # any page - narrow the list to it before hunting the button.
+            b.goto(f"{base}/pos/users?q={urllib.parse.quote(marker)}")
+        edit = b.eval_js(EDIT_RESTORE_JS % json.dumps(uid))
         t.chk("page exposes an edit form", "fatal" not in edit, True)
         if "fatal" not in edit:
             t.chk("update form has a cascade box",
@@ -540,7 +563,7 @@ def main():
     conn = sqlite3.connect(DB, timeout=10)
     try:
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("DELETE FROM staff WHERE staff_code LIKE ?",
+        conn.execute("DELETE FROM users WHERE username LIKE ?",
                      (MARKER + "%",))
         conn.commit()
     finally:

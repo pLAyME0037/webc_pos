@@ -133,8 +133,8 @@ void serve_notes_api(Serve_Context *sc) {
 
         db_t *db = open_webc_db();
         if (!db) { serve_error(sc, 500); return; }
-        if (!sql_txn_begin(db)) { 
-            db_close(db); 
+        if (!sql_txn_begin(db)) {
+            db_close(db);
             serve_error(sc, 500);
             return;
         }
@@ -167,8 +167,8 @@ void serve_notes_api(Serve_Context *sc) {
 
         db_t *db = open_webc_db();
         if (!db) { serve_error(sc, 500); return; }
-        if (!sql_txn_begin(db)) { 
-            db_close(db); 
+        if (!sql_txn_begin(db)) {
+            db_close(db);
             serve_error(sc, 500);
             return;
         }
@@ -188,8 +188,8 @@ void serve_notes_api(Serve_Context *sc) {
         }
         db_t *db = open_webc_db();
         if (!db) { serve_error(sc, 500); return; }
-        if (!sql_txn_begin(db)) { 
-            db_close(db); 
+        if (!sql_txn_begin(db)) {
+            db_close(db);
             serve_error(sc, 500);
             return;
         }
@@ -351,27 +351,6 @@ defer:
     return result;
 }
 
-bool soft_delete_note(db_t *db, String_View id) {
-    bool result = true;
-    sql_stmt stmt = {0};
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "UPDATE Notes "
-                         "SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
-                         "WHERE id = ?;",
-        [SQL_MYSQL]    = "UPDATE notes SET deleted_at = UTC_TIMESTAMP() "
-                         "WHERE id = ?;",
-        [SQL_POSTGRES] = "UPDATE notes SET deleted_at = now() WHERE id = $1;",
-    };
-
-    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
-    if (!sql_final_step(&stmt))               return_defer(false);
-
-defer:
-    sql_finalize(&stmt);
-    return result;
-}
-
 static bool restore_note(db_t *db, String_View id) {
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "UPDATE notes SET deleted_at = NULL WHERE id = ?;",
@@ -411,4 +390,9 @@ static const char *fields[] = { "title", "body" };
 // ?user_id=<uuid>, the plain /notes form and the JSON API leave it NULL.
 // Updates never touch user_id (update_note reads only title/body).
 static const char *opt_fields[] = { "user_id" };
-SERVE_CRUD(notes, note, Notes, Note, fields, opt_fields)
+
+SERVE_READ(notes, Notes);
+SERVE_CREATE(notes, note, fields, opt_fields);
+SERVE_UPDATE(notes, note, fields, opt_fields);
+SERVE_EDIT(notes, note, Notes, Note);
+SERVE_DELETE(notes, note);

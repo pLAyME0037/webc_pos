@@ -14,6 +14,37 @@ Status vocabulary:
 **blocked** = needs something first
 
 ---
+## 2026-11-12 — Security & Memory Leak Fixes (Auth, Route ID, Leaks, Notes, POS) — **done**
+
+- Fixed auth bypass in auth_gate: orphaned sessions for soft-deleted accounts
+  (where auth_current_user() returned NULL) previously fell through to access
+  granted. Now verified and redirected to /login.
+- Blocked slashes in route ID segments (parse_uri_id and route_id_parse) to
+  prevent path confusion and route hijacking.
+- Plugged memory leaks in master_child.c: freed String_Builder cl in
+  md_load_master_with_children, added md_form_cols_free() to free dynamic
+  option structures, and freed disp array on child load errors.
+- Fixed composite column search in serve_master_child(): now checks col->label
+  when col->name is NULL so filter boxes (q_Name, q_User, etc.) are recognized.
+- Fixed typo in pos.c pos_user_cust_columns: costomer_type_dict_id ->
+  customer_type_dict_id.
+- Fixed soft_delete_note in notes.c and display/notes.h.tt: table Notes has no
+  deleted_at column; mapped soft delete to delete_note and pointed form to /delete.
+- All implementations use explicit conditional blocks with zero ternary operators.
+
+## 2026-11-10 — Bug/Vulnerability fixes: Memory Leak & Stock Bypass — **done**
+
+### 1. Memory Leak in md_cascade_json
+- String_Builder sb buffer leaked on success path. Copied to arena via
+  temp_strdup but original heap buffer not freed.
+- Added sb_free(sb) before return. Removed ternary operator for string fallback.
+
+### 2. Vulnerability in POS Sale
+- nr > 0 guard bypassed stock check when no stock record existed for product.
+  Allowed selling out-of-stock items infinitely.
+- Removed nr > 0 condition. Replaced ternary operator for take calculation with
+  explicit if/else.
+
 ## 2026-11-09 — Replace MD_Cell with first-class sub-columns & Pattern 2 macros —
   **done**
 
@@ -1412,3 +1443,35 @@ to the working tree.
 | affected docs | `wiki/dev-log.md` (this) |
 | risk notes | #2 touches11 files mid-refactor - verify each `.cell`/`MD_Cell` site against the new `subcols` shape before converting; #1 changes option-SQL for every FK dropdown - smoke every form select; #6 needs `total_amount` column confirmed present in all3 dialects before adding to the stack; golden migrations untouched this round |
 | roadmap (not this round) | #8 placeholder audit when pg driver implements; perf round (`0012_perf_indexes` x3 + `?fragment=<n>`) still queued |
+
+## 2026-11-12 — schema-round shape reconciliation (post-refactor test/shape deltas)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | baseline re-run at `bc72a43` (worktree) gives the exact 21-fail ground truth. Current delta = **8 new pos fails + shop `category filter only own skus` + geo `page exposes an edit form`**. All 8 pos fails traced to the MD_Cell->MD_Column refactor changing shapes the tests pin |
+| design | source: (a) orders `order_status_dict_id` back to `.nullable = true` (refactor dropped the None option -> 6 vs 7 options); (b) alerts + audit user FK `.fk_label` back to `"name"` (refactor chose `username`; `users.name` is the 0007 GENERATED `TRIM(first_name..' '..last_name)` so rows show the person again); (c) alerts: flags stack moved back before `raw_payload` (refactor moved it to the end -> test's td[3] hit Payload). test churn: amounts cell 4->5 parts (bug #6 added `total_amount`), products placeholder `Base`->`Base Price` (refactor renamed the subcol), shift/order row `Sok`->`POS-STF-1` (staff dropped first_name; staff FK label is staff_code now). geo: EDIT_RESTORE targets the walked row via `?q=<marker>` (uuid id DESC lands the fresh row on an arbitrary page) |
+| measurements | baseline worktree suite: 21 FAILs (http119/1, pos372/17, shop118/0, role48/0, crud157/3, geo32/0, mysql41/0, https6/0); current: 31 FAILs -> target 21 + shop/geo deltas chased separately; filled in at Results |
+| affected docs | `wiki/dev-log.md` (this) |
+| risk notes | alerts flags reorder changes the create/update form key order only (FormData is name-keyed, safe); `users.name` generated column exists from 0007 in all 3 dialects - confirm mysql/pg golden has it before relying on it in row display |
+| roadmap (not this round) | shop category-filter regression; perf round (`0012_perf_indexes` + `?fragment=<n>`) still queued |
+
+### Results — bug sweep (2026-11-09 entry)
+
+| | |
+|---|---|
+| shipped | **#0** missing `}` restored in `master_child.h.tt` (build unblocked) · **#1** `MD_FK` 4th arg now `.fk_label` (display col) + contract comment, pos.c dict site moved to `.fk_where` · **#2** all 11 `MD_Cell` sites converted to `MD_Column.subcols` (MD_STACK/MD_AVATAR/MD_ACTIVITY); staff name = computed subcol with scalar-subquery `read_sql` · **#3** dropped `static` on the 5 externed column arrays · **#4** `DELETE FROM categories` x3 dialects · **#5** leaks fixed: child-row `values`/`disp`, `build_column_list` `cols`, `col->opt` overwrite · **#6** `total_amount` back in the orders Amounts stack · **#7** `md_sql_quote(s, lang)` doubles `\` on MySQL only, 3 call sites pass `db->lang` · **#9** `src/shop/#checkout.c#` gone (removal since committed) · **#8 deferred** until the pg driver lands (still a stub) |
+| bonus | **UAF in `md_cascade_json`** (`src/pos/geo.c`): `temp_strdup(sb.items)` ran AFTER `sb_free(sb)` - freelist next-ptr bytes leaked into `data-geo-data` and broke `body.decode()` nondeterministically (pos/crud crashes, position ~35739). Copy-before-free now; all other `sb_free` sites audited clean. Also fixed the user's in-flight **MD_CHOICE preprocessor trap** (bare `{a,b}` array literal as macro arg splits on the comma - wrapped `((const char*[]){...})` at 4 sites) |
+| measurements | `./build/bin/nob` green; full suite back to **21 FAILs = byte-identical baseline set** (http119/1, pos372/17, shop118/0, role48/0, crud157/3, geo32/0, img25/0, mysql41/0, https6/0). Verified against a `bc72a43` worktree run (its own 21-fail output) so the "known fails" list is ground truth, not memory |
+| follow-ups | `?` placeholder audit rides in with the pg driver; perf round (`0012_perf_indexes` x3 + `?fragment=<n>`) still queued |
+
+### Results — shape reconciliation + No column (2026-11-12 entry)
+
+| | |
+|---|---|
+| shipped | source: orders `order_status_dict_id` back to `.nullable = true` (refactor dropped the None option: 6 vs 7 options); alerts + audit user FK back to `.fk_label = "name"` (0003 GENERATED `TRIM(first..' '..last)` - rows show the person, not the login); alerts flags stack moved back to td[3] before `payload`. **Row-number feature finished** (user's WIP): `<th>No</th>` + number `<td>` moved into the data row before the column loop (`INT(ri + 1)`), stray number-row experiment removed, empty/edit/detail `colspan` -> `column_count + 2`. Also fixed the user's missing `;` at `master_child.c:780` (if/else conversion) that broke the build |
+| test churn | th_count expects +1 x18 (No th); row td counts +1 x4; cell index `split("</td>")[i]` +1 x6 (one churn bug: prices/cash both matched `)), 3)` and got swapped - corrected); orders amounts 4->5 parts (bug #6); products placeholder `Base`->`Base Price`; shift/order row `Sok`->`POS-STF-1` (staff dropped `first_name`, label is `staff_code`); shop sku regex tolerates the reformatted card markup (`\\s*` around the sku); geo cascade retargeted to `/pos/users` (staff dropped `village_id`): create walk fills `first_name/last_name/username/email/phone` (marker rides `username`), persistence/cleanup key off `users.username`, EDIT_RESTORE targets the walked row via `?q=<marker>` (uuid id DESC puts the fresh row on an arbitrary page) |
+| measurements | `./build/bin/nob` green; suite = **21 FAILs, identical set to the `bc72a43` baseline** + img25/0. Baseline worktree at `/home/playme/wc_baseline` (removable); logs `/home/playme/baseline.log`, `suite11.log` |
+| risk notes | user edits concurrently: caught 2 of their in-flight breakages mid-round (literal `INT(ri)` td, missing `;`) - build+suite after every batch; `No` numbering is page-local (`ri + 1`); th/td churn assumes the No column ships |
+| roadmap (not this round) | perf round (`0012_perf_indexes` x3 + `?fragment=<n>` + `PaginationSwitcher.js` per-page cache + seeded-500 measurement) still queued |

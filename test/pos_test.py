@@ -213,7 +213,7 @@ def main():
     html = body.decode()
     t.chk("provinces page", st, 200)
     t.chk("provinces th = code + kh + en + created + actions",
-          th_count(html), 5)
+          th_count(html), 6)
     t.chk("provinces seed rows fill page 1 (44 rows, 20/page)",
           html.count('<tr class="hover:'), 20)
     t.chk("provinces pager nav", 'data-pg-container="mc-tbody"' in html, "True")
@@ -237,7 +237,7 @@ def main():
     html = body.decode()
     row, edit = row_and_edit(html, rid)
     t.chk("province row found by id", bool(row), "True")
-    t.chk("province row = 4 columns + actions", row.count("<td"), 5)
+    t.chk("province row = No+4 columns + actions", row.count("<td"), 6)
     ei = edit_inputs(edit)
     t.chk("edit row prefills every part",
           [ei.get(k) for k in loc1], list(loc1.values()))
@@ -274,10 +274,11 @@ def main():
     t.chk("pos users page", st, 200)
     # Phase 13: User + phone + email + type + org + location + customer +
     # activity, plus the actions column.
-    t.chk("users th = user+phone+email+type+org+loc+customer+activity+actions",
-          th_count(html), 9)
+    t.chk("users th = user+type&gender+contact+branch+customer+village+"
+          "activity+actions", th_count(html), 9)
 
-    usr = {"name": "Sok Dara", "username": "pos_avatar_1",
+    usr = {"first_name": "Sok Dara", "last_name": "",
+           "username": "pos_avatar_1",
            "email": "dara@pos.kh", "phone": "0990000121",
            "profile_pic": PICK}
     st, _, _ = c.post_urlencoded("/pos/users/create?redirect=/pos/users", usr)
@@ -289,8 +290,8 @@ def main():
     html = body.decode()
     row, edit = row_and_edit(html, uid)
     t.chk("user row found by id", bool(row), "True")
-    t.chk("user column = ONE td (9 total in row)", row.count("<td"), 9)
-    first_td = row.split("</td>")[0]
+    t.chk("user column = No+7 columns + actions (9 tds)", row.count("<td"), 9)
+    first_td = row.split("</td>")[1]
     t.chk("avatar cell image + primary + secondary",
           (f'<img src="{PICK}"' in first_td
            and "Sok Dara" in first_td
@@ -300,9 +301,11 @@ def main():
     # prefilling input[value] on file inputs, so the current pic rides the
     # preview <img src> instead of the input.
     t.chk("avatar edit row prefills parts + contact",
-          [ei.get(k) for k in ("name", "username", "email", "phone")]
+          [ei.get(k) for k in ("first_name", "last_name", "username",
+                               "email", "phone")]
           + [f'src="{PICK}"' in edit],
-          ["Sok Dara", "pos_avatar_1", "dara@pos.kh", "0990000121", True])
+          ["Sok Dara", "", "pos_avatar_1", "dara@pos.kh", "0990000121",
+           True])
     t.chk("status select in avatar edit row",
           'name="status"' in edit, "True")
     t.chk("avatar status line + ring (ACTIVE = blue)",
@@ -313,7 +316,8 @@ def main():
     # empty picture -> placeholder box; empty update keeps stored picture
     st, _, _ = c.post_urlencoded(
         "/pos/users/create?redirect=/pos/users",
-        {"name": "No Pic", "username": "pos_avatar_2",
+        {"first_name": "No Pic", "last_name": "",
+         "username": "pos_avatar_2",
          "email": "np@pos.kh", "phone": "0990000122",
          "profile_pic": ""},
     )
@@ -329,7 +333,8 @@ def main():
           "True")
     st, _, _ = c.post_urlencoded(
         f"/pos/users/{uid}/update?redirect=/pos/users",
-        {"name": "Sok Dara Renamed", "username": "pos_avatar_1",
+        {"first_name": "Sok Dara Renamed", "last_name": "",
+         "username": "pos_avatar_1",
          "email": "dara@pos.kh", "phone": "0990000121",
          "profile_pic": ""},
     )
@@ -531,7 +536,7 @@ def main():
     st, body, _ = c.get("/pos/dictionaries")
     html = body.decode()
     t.chk("dictionaries page (create-only)", st, 200)
-    t.chk("dictionaries th = 4 columns + actions", th_count(html), 5)
+    t.chk("dictionaries th = 4 columns + actions", th_count(html), 6)
     t.chk("dictionaries lists seed rows", html.count('data-row-id="') >= 1, True)
     t.chk("create-only: add form present", 'data-md-op="create"' in html, True)
     t.chk("create-only: no edit buttons", "master-edit-btn" not in html, True)
@@ -575,7 +580,7 @@ def main():
     st, body, _ = c.get("/pos/categories")
     html = body.decode()
     t.chk("categories page", st, 200)
-    t.chk("categories th = code+name+parent+created+actions", th_count(html), 5)
+    t.chk("categories th = code+name+parent+created+actions", th_count(html), 6)
     t.chk("categories seeded rows (0004 seed)",
           html.count('data-row-id="sd-cat-') >= 1, True)
 
@@ -632,7 +637,7 @@ def main():
     html = body.decode()
     t.chk("products page", st, 200)
     t.chk("products th = product+codes+prices+category+type+actions",
-          th_count(html), 6)
+          th_count(html), 7)
     t.chk("products seeded rows fill page 1 (0004 seed)",
           html.count('data-row-id="sd-prod-'), 20)
 
@@ -661,11 +666,11 @@ def main():
     t.chk("products child tabs",
           ('data-tab="product_variants"' in html
            and 'data-tab="inventory_stocks"' in html), True)
-    t.chk("product row = 5 columns + actions", row.count("<td"), 6)
+    t.chk("product row = No+5 columns + actions", row.count("<td"), 7)
     t.chk("category cell shows FK label",
           ("Kid Renamed" in row and kid not in row), True)
     t.chk("prices cell = 3 stacked parts",
-          len(re.findall(r'<span class="text-xs', row.split("</td>")[2])), 3)
+          len(re.findall(r'<span class="text-xs', row.split("</td>")[3])), 3)
     ei = edit_inputs(edit)
     t.chk("edit prefills prices",
           [float(ei.get(k) or 0) for k in
@@ -682,7 +687,8 @@ def main():
            and '<select name="q_product_type_dict_id"' in fhtml
            and '<input type="search" name="q"' not in fhtml), True)
     t.chk("filter row: composite cells name the main part in the placeholder",
-          ('placeholder="SKU"' in fhtml and 'placeholder="Base"' in fhtml),
+          ('placeholder="SKU"' in fhtml
+           and 'placeholder="Base Price"' in fhtml),
           True)
     st, body, _ = c.get("/pos/products?q_category_id="
                         + urllib.parse.quote("Kid Renamed"))
@@ -840,7 +846,7 @@ def main():
     st, body, _ = c.get("/pos/stocks")
     html = body.decode()
     t.chk("stocks page", st, 200)
-    t.chk("stocks th = product+org+variant+qty+range+actions", th_count(html), 6)
+    t.chk("stocks th = product+org+variant+qty+range+actions", th_count(html), 7)
     t.chk("stocks shows 5a stock row",
           f'data-row-id="{sid}"' in html, True)
 
@@ -941,16 +947,15 @@ def main():
     user_id = db_row("SELECT id FROM users "
                      "WHERE id NOT IN (SELECT user_id FROM staff) "
                      "LIMIT 1")[0]
-    db_exec("INSERT INTO staff (id, user_id, org_unit_id, staff_code, "
-            "first_name, last_name, village_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("pos-stf-1", user_id, "pos-ou-1", "POS-STF-1",
-             "Sok", "Dara", loc_id))
+    db_exec("INSERT INTO staff (id, user_id, org_unit_id, staff_code) "
+            "VALUES (?, ?, ?, ?)",
+            ("pos-stf-1", user_id, "pos-ou-1", "POS-STF-1"))
 
     st, body, _ = c.get("/pos/orders")
     html = body.decode()
     t.chk("orders page", st, 200)
     t.chk("orders th = order+org+staff+customer+status+amounts+actions",
-          th_count(html), 7)
+          th_count(html), 8)
     t.chk("orders seeded rows (0004 seed)",
           html.count('data-row-id="sd-ord-') >= 1, True)
     sm = re.search(r'name="order_status_dict_id"[^>]*>(.*?)</select>',
@@ -977,14 +982,14 @@ def main():
     html = body.decode()
     row, edit = row_and_edit(html, oid)
     t.chk("order row found", bool(row), True)
-    t.chk("order row FK labels (org/staff)",
-          ("Main Depot" in row and "Sok" in row), True)
+    t.chk("order row FK labels (org/staff code)",
+          ("Main Depot" in row and "POS-STF-1" in row), True)
     status_label = db_row("SELECT label FROM dictionaries WHERE id = 'PAID'")[0]
     t.chk("status cell shows dict label (not raw id)",
           (status_label in row and "PAID" not in row), True)
-    t.chk("amounts cell = 4 stacked parts",
+    t.chk("amounts cell = 5 stacked parts (incl total_amount)",
           len(re.findall(r'<span class="text-xs',
-                         row.split("</td>")[5])), 4)
+                         row.split("</td>")[6])), 5)
 
     st, _, _ = c.post_urlencoded(
         f"/pos/orders/{oid}/update?redirect=/pos/orders",
@@ -1137,7 +1142,7 @@ def main():
     st, body, _ = c.get("/pos/shifts")
     html = body.decode()
     t.chk("shifts page", st, 200)
-    t.chk("shifts th = org+staff+status+cash+notes+actions", th_count(html), 6)
+    t.chk("shifts th = org+staff+status+cash+notes+actions", th_count(html), 7)
     t.chk("shifts seeded rows (0004 seed)",
           html.count('data-row-id="sd-shift-') >= 1, True)
 
@@ -1158,11 +1163,12 @@ def main():
     st, body, _ = c.get("/pos/shifts")
     row, edit = row_and_edit(body.decode(), shid)
     t.chk("shift row found", bool(row), True)
-    t.chk("shift row contents (org/staff/status)",
-          ("Main Depot" in row and "Sok" in row and "OPEN" in row), True)
+    t.chk("shift row contents (org/staff code/status)",
+          ("Main Depot" in row and "POS-STF-1" in row
+           and "OPEN" in row), True)
     t.chk("shift cash cell = 3 parts",
           len(re.findall(r'<span class="text-xs',
-                         row.split("</td>")[3])), 3)
+                         row.split("</td>")[4])), 3)
 
     st, _, _ = c.post_urlencoded(
         f"/pos/shifts/{shid}/update?redirect=/pos/shifts",
@@ -1180,7 +1186,7 @@ def main():
     html = body.decode()
     t.chk("finance page (read_only)", st, 200)
     t.chk("finance th = org+type+account+amounts+description+actions",
-          th_count(html), 6)
+          th_count(html), 7)
     t.chk("finance seeded rows (0004 seed)",
           html.count('data-row-id="sd-led-') >= 1, True)
     t.chk("finance read_only: no write UI",
@@ -1197,7 +1203,7 @@ def main():
     st, body, _ = c.get("/pos/customers")
     html = body.decode()
     t.chk("customers page", st, 200)
-    t.chk("customers th = tier+points+since+actions", th_count(html), 4)
+    t.chk("customers th = tier+points+since+actions", th_count(html), 5)
     t.chk("customers seeded rows (0004 seed)",
           html.count('data-row-id="sd-cus-') >= 1, True)
     cm = re.search(r'name="customer_type_dict_id"[^>]*>(.*?)</select>',
@@ -1228,7 +1234,8 @@ def main():
     # user child under the customer (fk via query)
     st, _, _ = c.post_urlencoded(
         f"/pos/users/create?customer_id={cid}&redirect=/pos/customers",
-        {"name": "Chanthou", "username": "chanthou1",
+        {"first_name": "Chanthou", "last_name": "",
+         "username": "chanthou1",
          "email": "chanthou1@example.com", "phone": "0990000123",
          "profile_pic": "", "created_at": ""})
     t.chk("user child create under customer", st, 302)
@@ -1295,16 +1302,15 @@ def main():
     # the query - the row shows on /pos/staff only.
     st, _, _ = c.post_urlencoded(
         f"/pos/staff/create?user_id={uid5d}&redirect=/pos/staff",
-        {"staff_code": "POS-STF-5D", "first_name": "Vanny",
-         "last_name": "Ly", "org_unit_id": "pos-ou-1",
-         "village_id": loc_id, "created_at": ""})
+        {"staff_code": "POS-STF-5D", "org_unit_id": "pos-ou-1",
+         "created_at": ""})
     t.chk("staff create with user fk via query", st, 302)
     stf5d = db_row("SELECT id FROM staff WHERE staff_code = 'POS-STF-5D'")[0]
-    t.chk("staff db (user/org/village, type/hire/phone null)",
-          db_row("SELECT user_id, org_unit_id, village_id, "
-                 "staff_type_dict_id, hire_date, phone FROM staff "
+    t.chk("staff db (user/org, type/hire/salary null)",
+          db_row("SELECT user_id, org_unit_id, "
+                 "staff_type_dict_id, hire_date, salary FROM staff "
                  "WHERE id = ?", (stf5d,)),
-          (uid5d, "pos-ou-1", loc_id, None, None, None))
+          (uid5d, "pos-ou-1", None, None, None))
     st, body, _ = c.get("/pos/users")
     t.chk("staff NOT a child row of the user (master-only)",
           (f'data-row-id="{stf5d}"' not in body.decode()
@@ -1314,19 +1320,19 @@ def main():
     st, body, _ = c.get("/pos/staff")
     html = body.decode()
     t.chk("staff page", st, 200)
-    # Phase 13: + phone + role (STAFF_TYPE) + hired columns.
-    t.chk("staff th = code+name+user+org+loc+phone+role+hired+actions",
+    # staff shape after the schema fix: code + computed name (users join)
+    # + user + org + role + hired + salary + actions.
+    t.chk("staff th = code+name+user+org+role+hired+salary+actions",
           th_count(html), 9)
     row, edit = row_and_edit(html, stf5d)
     t.chk("staff row found", bool(row), True)
-    t.chk("staff row labels (name cell / user / org)",
-          ("Vanny" in row and "Chanthou" in row and "Main Depot" in row),
-          True)
-    t.chk("staff name cell = 2 parts",
-          len(re.findall(r'<span class="text-xs', row.split("</td>")[1])), 2)
+    t.chk("staff row labels (name cell from user / org)",
+          ("Chanthou" in row and "Main Depot" in row), True)
+    t.chk("staff name cell = 1 part (single computed name)",
+          len(re.findall(r'<span class="text-xs', row.split("</td>")[2])), 1)
     sei = edit_inputs(edit)
-    t.chk("staff edit row carries phone + hire date",
-          ("phone" in sei and 'name="hire_date"' in edit), True)
+    t.chk("staff edit row carries salary + hire date",
+          ("salary" in sei and 'name="hire_date"' in edit), True)
     t.chk("staff edit row has STAFF_TYPE select",
           'name="staff_type_dict_id"' in edit, True)
     t.chk("staff child tab (shifts)", 'data-tab="cash"' in html, True)
@@ -1347,7 +1353,7 @@ def main():
     st, body, _ = c.get("/pos/org")
     html = body.decode()
     t.chk("org page", st, 200)
-    t.chk("org th = code+name+type+parent+actions", th_count(html), 5)
+    t.chk("org th = code+name+type+parent+actions", th_count(html), 6)
     t.chk("org shows fixture root", 'data-row-id="pos-ou-1"' in html, True)
     om = re.search(r'name="ou_type_dict_id"[^>]*>(.*?)</select>', html, re.S)
     t.chk("org type options scoped to ORG_TYPE (fk_where)",
@@ -1402,7 +1408,7 @@ def main():
     st, body, _ = c.get("/pos/permissions")
     html = body.decode()
     t.chk("permissions page", st, 200)
-    t.chk("permissions th = code+name+module+since+actions", th_count(html), 5)
+    t.chk("permissions th = code+name+module+since+actions", th_count(html), 6)
     t.chk("permissions seeded rows (0004 seed)",
           html.count('data-row-id="sd-perm-') >= 1, True)
 
@@ -1426,7 +1432,7 @@ def main():
     st, body, _ = c.get("/pos/roles")
     html = body.decode()
     t.chk("roles page", st, 200)
-    t.chk("roles th = code+name+org+description+actions", th_count(html), 5)
+    t.chk("roles th = code+name+org+description+actions", th_count(html), 6)
     t.chk("roles lists 5d fixture role",
           'data-row-id="pos-role-5d"' in html, True)
     t.chk("role child tabs (permissions/members)",
@@ -1531,7 +1537,7 @@ def main():
     st, body, _ = c.get("/pos/i18n")
     html = body.decode()
     t.chk("i18n page", st, 200)
-    t.chk("i18n th = code+name+default+active+actions", th_count(html), 5)
+    t.chk("i18n th = code+name+default+active+actions", th_count(html), 6)
     t.chk("i18n lists seeded languages",
           ('data-row-id="lang_km"' in html and 'data-row-id="lang_en"' in html),
           True)
@@ -1594,7 +1600,7 @@ def main():
     html = body.decode()
     t.chk("config page", st, 200)
     t.chk("config th = key+value+json+encrypted+since+actions",
-          th_count(html), 6)
+          th_count(html), 7)
     # 0011_seed_config ships pos.shop_name, so /pos/config is never empty on
     # a fresh DB: the seeded row is listed instead of the empty state.
     t.chk("config empty state", "No Configs yet." in html, False)
@@ -1651,7 +1657,7 @@ def main():
     html = body.decode()
     t.chk("alerts page", st, 200)
     t.chk("alerts th = user+order+type+flags+payload+actions",
-          th_count(html), 6)
+          th_count(html), 7)
     t.chk("alerts seeded rows (0004 seed)",
           html.count('data-row-id="sd-alert-') >= 1, True)
 
@@ -1672,7 +1678,7 @@ def main():
     t.chk("alert row labels (user name + order number)",
           (bool(row) and "Chanthou" in row and "ORD-POS-1" in row), True)
     t.chk("alert flags cell = 2 parts",
-          len(re.findall(r'<span class="text-xs', row.split("</td>")[3])), 2)
+          len(re.findall(r'<span class="text-xs', row.split("</td>")[4])), 2)
 
     st, _, _ = c.post_urlencoded(
         f"/pos/alerts/{al5g}/update?redirect=/pos/alerts",
@@ -1697,7 +1703,7 @@ def main():
     html = body.decode()
     t.chk("audit page (read_only)", st, 200)
     t.chk("audit th = user+table+record+action+diff+when+actions",
-          th_count(html), 7)
+          th_count(html), 8)
     t.chk("audit seeded rows (0004 seed)",
           html.count('data-row-id="sd-aud-') >= 1, True)
     t.chk("audit read_only: no write UI",
@@ -1786,7 +1792,7 @@ def main():
     m = re.search(r'<tr class="hover:[^>]*data-row-id="([^"]+)">(.*?)</tr>',
                   html, re.S)
     t.chk("demo master row = name+user+email+phone+picture + actions",
-          m.group(2).count("<td") if m else -1, 6)
+          m.group(2).count("<td") if m else -1, 7)
 
     # ---- Phase 15: timestamps are workflow-only + local wall clock ------
     # created_at/updated_at/deleted_at never render as inputs: no create,

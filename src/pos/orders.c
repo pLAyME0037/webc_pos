@@ -21,7 +21,7 @@ MD_Column md_orders_columns[] = {
     MD_FK("staff_id", "Cashier", "staff", "staff_code", .nullable = false),
     MD_FK("customer_id", "Customer", "customers", "id", .nullable = true),
     MD_FK("order_status_dict_id", "Status", "dictionaries", "label",
-          .fk_where = "category = 'ORDER_STATUS'", .nullable = false),
+          .fk_where = "category = 'ORDER_STATUS'", .nullable = true),
     MD_STACK("Amounts",
         MD_FIELD("subtotal", "Subtotal", COL_TYPE_NUM, .nullable = false),
         MD_FIELD("discount_amount", "Discount", COL_TYPE_NUM, .nullable = false),

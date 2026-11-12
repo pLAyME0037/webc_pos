@@ -420,21 +420,22 @@ bool auth_gate(Serve_Context *sc) {
     // Rebind the per-request identity state on every call (route_request
     // invokes auth_gate exactly once, before routing); auth_current_user()
     // fills it lazily on first use.
-    g_auth_sc = sc;
-    g_auth_user = (Auth_User) {0};
+    g_auth_sc       = sc;
+    g_auth_user     = (Auth_User) {0};
     g_auth_resolved = false;
 
     if (!auth_guarded_uri(sc->uri)) return false;
     char uid[64];
     if (session_user_id(sc, uid, sizeof(uid))) {
-        // Phase 16 signup: a live CUSTOMER session never enters the staff
+        // signup: a live CUSTOMER session never enters the staff
         // areas - it goes back to the storefront instead of the login
         // form (a live ADMIN session sails through to the page itself).
         const Auth_User *au = auth_current_user();
-        if (au && au->user_type && au->user_type[0]
-            && strcmp(au->user_type, "ADMIN") != 0) {
-            http_render_redirect(sc, 303, "/");
-            return true;
+        if (au != NULL && au->user_type != NULL && au->user_type[0] != '\0') {
+            if (strcmp(au->user_type, "ADMIN") != 0) {
+                http_render_redirect(sc, 303, "/");
+                return true;
+            }
         }
         return false;
     }
@@ -454,10 +455,6 @@ bool auth_gate(Serve_Context *sc) {
     http_render_redirect(sc, 303, temp_sprintf("/login?next=%s", enc));
     return true;
 }
-
-// ---------------------------------------------------------------------------
-// Phase 14: page-level RBAC
-// ---------------------------------------------------------------------------
 
 bool auth_has_perm(const char *code) {
     if (!code || !code[0]) return false;

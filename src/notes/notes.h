@@ -21,7 +21,6 @@ bool read_notes(db_t *db, Notes *notes, const Page_Info *slice);
 bool count_notes(db_t *db, size_t *out);
 bool create_note(db_t *db, String_View *values, size_t count);
 bool update_note(db_t *db, String_View *values, size_t count, String_View id);
-bool soft_delete_note(db_t *db, String_View id);
 bool delete_note(db_t *db, String_View id);
 
 #endif // SRC_NOTES_H_

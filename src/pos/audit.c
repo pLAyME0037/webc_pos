@@ -12,7 +12,8 @@
 // =========================================================================
 
 static MD_Column md_audit_columns[] = {
-    MD_FK("user_id", "User", "users", "username", .nullable = true),
+    // users.name (0003 GENERATED) so the row shows the person, not login
+    MD_FK("user_id", "User", "users", "name", .nullable = true),
     MD_FIELD("table_name", "Table", COL_TYPE_TEXT, .nullable = false),
     MD_FIELD("record_id", "Record ID", COL_TYPE_TEXT, .nullable = false),
     MD_FIELD("action", "Action", COL_TYPE_TEXT, .nullable = false),

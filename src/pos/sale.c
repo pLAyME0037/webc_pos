@@ -413,7 +413,7 @@ void serve_pos_sale_post(Serve_Context *sc) {
                 }
             }
             sql_finalize(&st);
-            if (nr > 0 && avail + 1e-9 < res[i].qty) {
+            if (avail + 1e-9 < res[i].qty) {
                 fail = "Not enough stock for a sale line.";
                 break;
             }

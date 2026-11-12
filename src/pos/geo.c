@@ -646,13 +646,15 @@ const char *md_cascade_json(db_t *db, const MD_MasterRows *rows,
            && geo_cascade_chosen(db, &sb, rows, config);
     sb_append_cstr(&sb, "}");
     if (!ok) { sb_free(sb); return NULL; }
-    // A String_Builder is NOT NUL-terminated (nob.h:679). temp_strdup()
-    // takes a cstr, so without this it reads past sb.count into whatever
-    // heap follows - which here held the migration script text, injecting
-    // raw "INSERT INTO ..." bytes into the page and breaking UTF-8.
     sb_append_null(&sb);
-    return temp_strdup(sb.items ? sb.items
-                                : "{\"p\":[],\"d\":[],\"c\":[],\"s\":{}}");
+    // Copy OUT before sb_free(): temp_strdup() must not read sb.items after
+    // free - the chunk goes to the allocator's freelist and its first bytes
+    // become a heap pointer (nondeterministic garbage in data-geo-data).
+    const char *ret;
+    if (sb.items) ret = temp_strdup(sb.items);
+    else ret = "{\"p\":[],\"d\":[],\"c\":[],\"s\":{}}";
+    sb_free(sb);
+    return ret;
 }
 
 /* GET /geo/villages?commune=<id> -- the lazy half of the cascade. Answers

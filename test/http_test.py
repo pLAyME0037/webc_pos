@@ -589,7 +589,7 @@ def main():
             " user_type_dict_id, customer_id) "
             "VALUES (?, ?, ?, ?, ?, '', 'CUSTOMER', ?)",
             ("su-guest-1", "Guest", "Buyer", "0885544332", "0885544332",
-             "0885544332", "sd-cus-1"))
+             "sd-cus-1"))
     st, hdr, _, _ = post_form(
         "/signup", {"first_name": "Claimed", "last_name": "Buyer",
                     "username": "phase16_claimed",
