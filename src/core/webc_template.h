@@ -44,7 +44,7 @@
         Plural_Type dt = {0};                                             \
         Page_Info page_info = {0};                                        \
         bool fragment = page_fragment_requested(sc->query_string);        \
-        page_info_parse(&page_info, sc->query_string, "page", "per_page");\
+        page_info_parse_session(&page_info, sc, sc->query_string, "page");   \
         db_t *db = open_webc_db();                                        \
         if (!db) { serve_error(sc, 500); return; }                        \
         bool ok = false;                                                  \

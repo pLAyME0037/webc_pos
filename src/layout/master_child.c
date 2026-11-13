@@ -719,7 +719,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     }
 
     Page_Info page_info = {0};
-    page_info_parse(&page_info, sc->query_string, "page", "per_page");
+    page_info_parse_session(&page_info, sc, sc->query_string, "page");
     if (!md_count_masters(db, config, show_deleted, &search, &page_info.total)) {
         db_close(db);
         serve_error(sc, 500);

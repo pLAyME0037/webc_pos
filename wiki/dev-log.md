@@ -1541,3 +1541,20 @@ to the working tree.
 | measurements | build green; full suite = **21 FAILs, byte-identical set to the suite11/`bc72a43` baseline** (http119/1, pos372/17, shop118/0, role48/0, crud157/3, geo32/0, img25/0, mysql41/0, https6/0); golden x3 green; logs `/home/playme/suite14.log` |
 | risk notes | child page flips SSR-fallback (full reload) because the embedded child store was deliberately removed - the JS only client-swaps when the fragment response carries that child's tbody; `md_child_where` semantic fix re-verified against the trash-banner/baseline tests (byte-identical set) |
 | follow-ups | Actions `<th>`/button gating still queued; `0012_perf_indexes` x3 + seeded-500 measurement still queued |
+
+## 2026-11-13 — per_page as a saved session preference (all routes)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user: "when user inject or change per_page value save it as per user global session value across all route e.g. ?page=4&per_page=5" |
+| design: storage | browser cookie `webc_per_page` (zero migration, works for guests, mirrors the `webc_lang` preference cookie). Attributes: `Path=/; HttpOnly; SameSite=Lax; Max-Age=365d` (HttpOnly because no client JS reads it; sid/cart precedent). NOT stored server-side: `user_sessions` has no pref column and a per-request lookup would tax every paged render |
+| design: save | a request whose query carries a VALID `?per_page=N` (1..PAGE_MAX, clamped) on a paged route stores `webc_per_page=<effective>`; page number stays transient (per-route only, per the user's example the saved value is the size). Invalid values (`0`, `abc`) save nothing. Only the global `per_page` key saves - child `?<table>_per_page` keys stay per-table (fragment-round independence preserved) |
+| design: read | new `page_info_parse_session()` in paging.c: query `per_page` (valid) wins -> else the cookie (clamped on read too, hand-edited cookies can't break the window) -> else `PAGE_DEFAULT_PER_PAGE`. Applied at the two GLOBAL sites only: SERVE_READ macro (`/users`, `/notes`) and the master list in `master_child.c` (all `/pos/*`, `/people`, ...). Child-key calls keep plain `page_info_parse()` |
+| design: why cookie | single Set-Cookie slot (`http_set_cookie`) is enough because a response never changes lang and size at once in practice; risk logged below |
+| measurements | `./build/bin/nob` green; full suite vs the 21-fail baseline + img 25/0 |
+| affected docs | `wiki/dev-log.md` (this) |
+| risk notes | (1) single Set-Cookie slot: a hypothetical `?lang=..&per_page=..` response keeps only the last-queued cookie - paging runs after i18n so size would win over lang; (2) pager hrefs always carry `<per_key>=<resolved>` so every page click re-saves the CURRENT size (idempotent, pins the default on first click - harmless); (3) logout does NOT clear it (webc_lang precedent: it is a browser preference, not an account artifact); (4) within http_test.py the first `?per_page=` hit pins the jar for the rest of that file - each suite file is its own process/jar so other files are untouched |
+| test plan | new http_test block: `?per_page=5` -> Set-Cookie `webc_per_page=5`; same route, `/notes` (SERVE_READ) and `/people` (master-child) all render `data-pg-per="5"` with no per param; `?notes_per_page=2` does NOT touch the cookie; `?per_page=0` keeps the saved value; jar popped before/after so the block is order-independent |
+| roadmap (not this round) | Actions `<th>`/button gating; `0012_perf_indexes` |

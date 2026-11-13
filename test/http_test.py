@@ -505,6 +505,30 @@ def main():
            'data-pg-unit' not in hpf,
            '<template data-pg-pager' not in hpf), (True, True, True))
 
+    # ---- session per_page: saved once, applied on every route ------------
+    c.cookies.pop("webc_per_page", None)
+    st, hdr, _, _ = c.req_full("GET", "/users?per_page=5")
+    t.chk("per_page=5 stores webc_per_page",
+          (st, "webc_per_page=5" in hdr.get("Set-Cookie", "")), (200, True))
+    st, body, _ = c.get("/users")
+    hu = body.decode()
+    t.chk("same route falls back to the saved per_page",
+          (len(row_ids(hu, "/users")), 'data-pg-per="5"' in hu), (5, True))
+    st, body, _ = c.get("/notes")
+    t.chk("other route (SERVE_READ) inherits the saved per_page",
+          'data-pg-per="5"' in body.decode(), True)
+    st, body, _ = c.get("/people")
+    t.chk("master-child route inherits the saved per_page",
+          'data-pg-per="5"' in body.decode(), True)
+    st, hdr, _, _ = c.req_full("GET", "/people?notes_per_page=2")
+    t.chk("child per-table key never touches the session value",
+          "webc_per_page" in hdr.get("Set-Cookie", ""), False)
+    st, body, _ = c.get("/users?per_page=0")
+    hu = body.decode()
+    t.chk("invalid per_page keeps the saved value",
+          (len(row_ids(hu, "/users")), 'data-pg-per="5"' in hu), (5, True))
+    c.cookies.pop("webc_per_page", None)
+
     # ---- Phase 16 signup: public customer accounts ------------------------
     st, body, _ = c.get("/signup")
     hs = body.decode()

@@ -2,6 +2,7 @@
 #define CORE_DISPLAY_PAGING_H_
 
 #include "third_party/nob/nob.h"
+#include "src/http/serve.h"   // Serve_Context (session per_page cookie)
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -23,6 +24,13 @@ typedef struct {
 // Parse ?<page_key> and ?<per_key> out of `query` (invalid -> defaults).
 void page_info_parse(Page_Info *out, String_View query,
                      const char *page_key, const char *per_key);
+
+// Global session size variant of page_info_parse(): a valid ?per_page= in
+// `query` wins AND is saved to the webc_per_page cookie; otherwise the saved
+// cookie applies; otherwise the default. Child per-table keys
+// (?<table>_per_page) keep page_info_parse() and never touch the cookie.
+void page_info_parse_session(Page_Info *out, Serve_Context *sc,
+                             String_View query, const char *page_key);
 
 // Call once total row count is known: computes total_pages, clamps page,
 // and fills offset, row_start, and row_end.

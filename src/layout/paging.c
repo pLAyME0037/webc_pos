@@ -7,12 +7,16 @@
 #include "paging.h"
 #include "src/http/utils.h"
 
-// Copy a query value into a NUL-terminated scratch buffer and parse it as
-// an unsigned long. Returns false when the value is absent, empty or not a
-// plain number (caller keeps its default).
-static bool page_query_size(String_View query, const char *key, size_t *out) {
-    String_View v = {0};
-    if (!form_find(query, key, &v) || v.count == 0) return false;
+// Saved session page size (browser cookie, mirrors the webc_lang preference
+// cookie). Only the global "per_page" key writes/reads it.
+#define PER_COOKIE "webc_per_page"
+#define PER_COOKIE_MAX_AGE (365 * 24 * 60 * 60)
+
+// Parse a raw size value (query param or cookie): digits only; empty, zero
+// or non-numeric -> false (caller keeps its default); huge/overflowing ->
+// SIZE_MAX (caller clamps to PAGE_MAX_PER_PAGE).
+static bool page_size_from_sv(String_View v, size_t *out) {
+    if (v.count == 0) return false;
     for (size_t i = 0; i < v.count; ++i) {
         if (v.data[i] < '0' || v.data[i] > '9') return false;
     }
@@ -36,6 +40,13 @@ static bool page_query_size(String_View query, const char *key, size_t *out) {
     if (val == 0) return false;
     *out = (size_t)val;
     return true;
+}
+
+// Resolve `key` out of `query` and parse it as a page size.
+static bool page_query_size(String_View query, const char *key, size_t *out) {
+    String_View v = {0};
+    if (!form_find(query, key, &v)) return false;
+    return page_size_from_sv(v, out);
 }
 
 void page_info_parse(Page_Info *out, String_View query,
@@ -62,6 +73,32 @@ void page_info_parse(Page_Info *out, String_View query,
         } else {
             out->per_page = PAGE_MAX_PER_PAGE;
         }
+    }
+}
+
+void page_info_parse_session(Page_Info *out, Serve_Context *sc,
+                             String_View query, const char *page_key)
+{
+    page_info_parse(out, query, page_key, "per_page");
+    size_t q = 0;
+    if (page_query_size(query, "per_page", &q)) {
+        // A valid ?per_page= in the query wins and becomes the session
+        // value (out->per_page already holds it, clamped).
+        if (sc != NULL) {
+            http_set_cookie(sc, temp_sprintf(
+                PER_COOKIE "=%zu; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d",
+                out->per_page, PER_COOKIE_MAX_AGE));
+        }
+        return;
+    }
+    // Absent or malformed: the saved session size (clamped again on read,
+    // a hand-edited cookie must not break the window), else the default
+    // page_info_parse() left behind.
+    String_View cv = {0};
+    size_t c = 0;
+    if (sc != NULL && http_cookie_find(sc, PER_COOKIE, &cv) &&
+        page_size_from_sv(cv, &c) && c >= 1) {
+        out->per_page = c <= PAGE_MAX_PER_PAGE ? c : PAGE_MAX_PER_PAGE;
     }
 }
 
