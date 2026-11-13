@@ -272,10 +272,12 @@ def main():
     st, body, _ = c.get("/pos/users")
     html = body.decode()
     t.chk("pos users page", st, 200)
-    # Phase 13: User + phone + email + type + org + location + customer +
-    # activity, plus the actions column.
-    t.chk("users th = user+type&gender+contact+branch+customer+village+"
-          "activity+actions", th_count(html), 9)
+    # Phase 13: User + type&gender + contact + branch + village +
+    # activity, plus No + actions. customer is not a master column (it
+    # moved out in 8fef864) - the link rides users.customer_id and is
+    # browsed from /pos/customers' Users child.
+    t.chk("users th = user+type&gender+contact+branch+village+"
+          "activity+actions", th_count(html), 8)
 
     usr = {"first_name": "Sok Dara", "last_name": "",
            "username": "pos_avatar_1",
@@ -290,7 +292,7 @@ def main():
     html = body.decode()
     row, edit = row_and_edit(html, uid)
     t.chk("user row found by id", bool(row), "True")
-    t.chk("user column = No+7 columns + actions (9 tds)", row.count("<td"), 9)
+    t.chk("user column = No+6 columns + actions (8 tds)", row.count("<td"), 8)
     first_td = row.split("</td>")[1]
     t.chk("avatar cell image + primary + secondary",
           (f'<img src="{PICK}"' in first_td
@@ -1216,10 +1218,10 @@ def main():
         {"customer_type_dict_id": "TEIR_2", "loyalty_points": "250"})
     t.chk("customer create", st, 302)
     cid = db_row("SELECT id FROM customers WHERE loyalty_points = 250")[0]
-    t.chk("customer row db (tier/points, metadata default)",
-          db_row("SELECT customer_type_dict_id, loyalty_points, metadata "
+    t.chk("customer row db (tier/points)",
+          db_row("SELECT customer_type_dict_id, loyalty_points "
                  "FROM customers WHERE id = ?", (cid,)),
-          ("TEIR_2", 250, None))
+          ("TEIR_2", 250))
 
     st, body, _ = c.get("/pos/customers")
     html = body.decode()
@@ -1270,11 +1272,13 @@ def main():
     t.chk("interaction child thead = user+event cells + actions",
           child_thead(html, "customer_interactions"), 3)
 
-    # ---- /pos/users: Roles child only (staff is master-only, Phase 13) --
+    # ---- /pos/users: Roles + Activity children (staff is master-only) --
     st, body, _ = c.get("/pos/users")
     html = body.decode()
-    t.chk("users page children (Roles only - staff is a master table)",
-          ('data-tab="user_roles"' in html and 'data-tab="staff"' not in html),
+    t.chk("users page children (Roles + Activity - staff is a master table)",
+          ('data-tab="user_roles"' in html and
+           'data-tab="customer_interactions"' in html and
+           'data-tab="staff"' not in html),
           True)
 
     db_exec("INSERT INTO roles (id, org_unit_id, role_code, role_name) "

@@ -1,15 +1,5 @@
 <c>
-    // Per-master child window. One shared ?<table>_page key (parsed once
-    // per table into child_pages[] in serve_master_child); the totals are
-    // per master, so the window is clamped against each master's own rows.
-    Page_Info page_info = child_pages[ti];
-    page_info_finish(&page_info, rows->items[ri].children[ti].count);
-    size_t cw_lo = page_info.offset;
-    size_t cw_hi = cw_lo + page_info.per_page;
-    if (cw_hi > rows->items[ri].children[ti].count) {
-        cw_hi = rows->items[ri].children[ti].count;
-    }
-    const char *page_key = temp_sprintf("%s_page", config->children[ti].table);
+    Page_Info page_info = rows->items[ri].children[ti].page_info;
     const char *page_container = temp_sprintf("mc-tbody-%s-%s",
                                                config->children[ti].table,
                                                rows->items[ri].id);
@@ -60,7 +50,7 @@
                         No records
                 </td></tr>
             <c> } else { </c>
-                <c> for (size_t ci = cw_lo; ci < cw_hi; ++ci) { </c>
+                <c> for (size_t ci = 0; ci < rows->items[ri].children[ti].count; ++ci) { </c>
                     <c> #include "./md_child_rows.h" </c>
                 <c> } </c>
             <c> } </c>
@@ -84,16 +74,5 @@
     <div class="px-3 py-1 text-xs text-gray-500 dark:text-gray-400">
         <c> INT(page_info.total); </c> record(s)
     </div>
-    <c> } </c>
-
-    <c> if (fragment) { </c>
-    <table data-pg-rows="<c> STR(page_container); </c>" data-pg-unit="3">
-        <tbody>
-        <c> for (size_t ci = 0; ci < rows->items[ri].children[ti].count; ++ci) { </c>
-            <c> #include "./md_child_rows.h" </c>
-        <c> } </c>
-        </tbody>
-    </table>
-    <c> #include "./pager_templates.h" </c>
     <c> } </c>
 </div>

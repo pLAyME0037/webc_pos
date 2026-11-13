@@ -234,16 +234,21 @@ static MD_Column pos_user_role_columns[] = {
         .nullable = false, .computed = 1 },
 };
 
-static MD_Column pos_user_cust_columns[] = {
-    MD_FK("customer_id", "Type", "customers", "customer_type_dict_id",
-          .nullable = true),
-    /* MD_FIELD("customer_type_dict_id", "Type", COL_TYPE_TEXT, .nullable = true), */
-    /* MD_FIELD("loyalty_points", "Points", COL_TYPE_NUM), */
+// User-scoped activity: the parent user is the tab scope (no user
+// column); the customer the event hit rides as the FK - customers has no
+// name column, so it displays id (orders.c precedent).
+static MD_Column pos_user_interaction_columns[] = {
+    MD_FK("customer_id", "Customer", "customers", "id", .nullable = true),
+    MD_STACK("Event",
+        MD_FIELD("interaction_type", "Kind", COL_TYPE_TEXT, .nullable = false),
+        MD_FIELD("raw_payload", "Payload", COL_TYPE_TEXT, .nullable = false)
+    ),
 };
 
 void serve_pos_users(Serve_Context *sc) {
-    // Children: the editable relations of an account (role links). Staff
-    // is a master table - it renders only on /pos/staff, never as another
+    // Children: the editable relations of an account (role links) + its
+    // event log (customer_interactions carries user_id). Staff is a
+    // master table - it renders only on /pos/staff, never as another
     // table's child (Phase 13).
     MD_ChildTab children[] = {
         {
@@ -256,16 +261,16 @@ void serve_pos_users(Serve_Context *sc) {
             .column_count = ARRAY_LEN(pos_user_role_columns),
             .soft_delete  = 1,
         }, 
-        /* { */
-        /*     .table        = "customers", */
-        /*     .title        = "Customers", */
-        /*     .fk_column    = "customer_id", */
-        /*     .id_column    = "id", */
-        /*     .crud_path    = "/pos/customers", */
-        /*     .columns      = pos_user_cust_columns, */
-        /*     .column_count = ARRAY_LEN(pos_user_cust_columns), */
-        /*     .soft_delete  = 1, */
-        /* }, */
+        {
+            .table        = "customer_interactions",
+            .title        = "Activity",
+            .fk_column    = "user_id",
+            .id_column    = "id",
+            .crud_path    = "/pos/customer_interactions",
+            .columns      = pos_user_interaction_columns,
+            .column_count = ARRAY_LEN(pos_user_interaction_columns),
+            .soft_delete  = 1,
+        },
     };
     MD_MasterConfig config = {
         .table          = "users",
@@ -313,7 +318,6 @@ MD_Column md_dictionaries_columns[] = {
     { .name = "label",      .label = "Label",    .type = COL_TYPE_TEXT, .nullable = false },
     { .name = "sort_order", .label = "Sort",     .type = COL_TYPE_NUM,  .nullable = false },
 };
-const size_t md_dictionaries_columns_count = ARRAY_LEN(md_dictionaries_columns);
 
 // Required keys first: category drives the SERVE_CREATE 400 guard; the
 // sort key is optional and defaults to 0 (pos_num: empty -> SQL_I(0)),
@@ -360,7 +364,7 @@ void serve_pos_dict(Serve_Context *sc) {
         .id_column      = "id",
         .crud_path      = "/pos/dictionaries",
         .columns        = md_dictionaries_columns,
-        .column_count   = md_dictionaries_columns_count,
+        .column_count   = ARRAY_LEN(md_dictionaries_columns),
         .create_only    = 1,
     };
     serve_master_child(sc, &config);

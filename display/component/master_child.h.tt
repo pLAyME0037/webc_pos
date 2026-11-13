@@ -237,9 +237,9 @@
     } </c>
 
 <c> if (fragment) { </c>
-<div id="pg-store" hidden>
-    <table data-pg-rows="<c> STR(page_container); </c>" data-pg-unit="3">
-        <tbody>
+<div id="pg-frag">
+    <table data-pg-rows="<c> STR(page_container); </c>">
+        <tbody id="<c> STR(page_container); </c>">
 <c> } else { </c>
 <div class="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 overflow-scroll border">
     <table class="w-full text-left border-collapse master-table">
@@ -268,7 +268,8 @@
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700">
 <c> } </c>
-            <c> if (rows->count == 0) { </c>
+
+         <c> if (rows->count == 0) { </c>
             <tr>
                 <td colspan="<c> INT(config->column_count + 2); </c>"
                     class="pl-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 text-center">
@@ -280,7 +281,7 @@
                 <tr class="<c> if (show_deleted) { </c>hover:bg-red-100 dark:hover:bg-red-800 bg-red-50 dark:bg-red-900<c> } else { </c>hover:bg-gray-100 dark:hover:bg-gray-700<c> } </c>"
                     data-row-id="<c> STR(rows->items[ri].id); </c>">
                     <td class="pl-3 py-1 text-gray-700 dark:text-gray-200">
-                        <c> INT(ri + 1); </c>
+                        <c> INT(page_info.offset + ri + 1); </c>
                     </td>
                     <c> for (size_t ci = 0; ci < config->column_count; ++ci) { </c>
                     <td class="pl-3 py-1 text-gray-700 dark:text-gray-200">
@@ -614,11 +615,12 @@
             </tr>
         <c> } </c>
     <c> } </c>
+    
 <c> if (fragment) { </c>
         </tbody>
     </table>
+    <c> #include "./pagination.h" </c>
 </div>
-    <c> #include "./pager_templates.h" </c>
 <c> } else { </c>
         </tbody>
     </table>

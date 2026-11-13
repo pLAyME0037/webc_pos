@@ -39,30 +39,25 @@
 // Dynamic CRUD with Zero Limits (Loop-based)
 // =========================================================================
 
-// List handler: parse ?page/?per_page, count, load just that window and
-// render. ?fragment=all skips the shell and loads everything instead --
-// that bare payload is the pagination store fetched in the background by
-// js/PaginationSwitcher.js (page flips then happen client-side).
 #define SERVE_READ(plural, Plural_Type)                                   \
     void serve_##plural##_read(Serve_Context *sc) {                       \
         Plural_Type dt = {0};                                             \
         Page_Info page_info = {0};                                        \
         bool fragment = page_fragment_requested(sc->query_string);        \
-        page_info_parse(sc->query_string, "page", &page_info);            \
+        page_info_parse(&page_info, sc->query_string, "page", "per_page");\
         db_t *db = open_webc_db();                                        \
         if (!db) { serve_error(sc, 500); return; }                        \
-        bool ok;                                                          \
-        if (fragment) {                                                   \
-            ok = read_##plural(db, &dt, NULL);                            \
-        } else if (count_##plural(db, &page_info.total)) {                \
+        bool ok = false;                                                  \
+        if (count_##plural(db, &page_info.total)) {                       \
             page_info_finish(&page_info, page_info.total);                \
             ok = read_##plural(db, &dt, &page_info);                      \
-        } else {                                                          \
-            ok = false;                                                   \
         }                                                                 \
         db_close(db);                                                     \
-        if (!ok) { serve_error(sc, 500); return; }                        \
-        if (fragment) page_info_finish(&page_info, dt.count);             \
+        if (!ok) {                                                        \
+            free(dt.items);                                               \
+            serve_error(sc, 500);                                         \
+            return;                                                       \
+        }                                                                 \
         sc->body.count = 0;                                               \
         render_##plural##_page(sc, dt, page_info, fragment);              \
         free(dt.items);                                                   \
@@ -186,36 +181,28 @@
 
 #define SERVE_EDIT(plural, singular, Plural_Type, Singular_Type)        \
     void serve_##plural##_edit(Serve_Context *sc) {                     \
-        Route_Id id = sc->route_id;   /* parsed once at the route gate */ \
+        (void)sizeof(Plural_Type);                                      \
+        Route_Id id = sc->route_id;                                     \
         if (id.kind == ID_NONE) {                                       \
             serve_error(sc, 404);                                       \
             return;                                                     \
         }                                                               \
-        Plural_Type dt = {0};                                           \
+        Singular_Type target = {0};                                     \
+        bool found = false;                                             \
         db_t *db = open_webc_db();                                      \
         if (!db) { serve_error(sc, 500); return; }                      \
-        if (!read_##plural(db, &dt, NULL)) {                            \
-            db_close(db);                                               \
+        bool ok = read_##singular##_by_id(db, id.raw, &target, &found); \
+        db_close(db);                                                   \
+        if (!ok) {                                                      \
             serve_error(sc, 500);                                       \
             return;                                                     \
         }                                                               \
-        db_close(db);                                                   \
-        Singular_Type *target = NULL;                                   \
-        for (size_t i = 0; i < dt.count; ++i) {                         \
-            if (dt.items[i].id != NULL                                  \
-                && sv_eq(sv_from_cstr(dt.items[i].id), id.raw)) {       \
-                target = &dt.items[i];                                  \
-                break;                                                  \
-            }                                                           \
-        }                                                               \
-        if (!target) {                                                  \
-            free(dt.items);                                             \
+        if (!found) {                                                   \
             serve_error(sc, 404);                                       \
             return;                                                     \
         }                                                               \
         sc->body.count = 0;                                             \
-        render_##plural##_edit_page(sc, *target);                       \
-        free(dt.items);                                                 \
+        render_##plural##_edit_page(sc, target);                        \
         http_render_response(sc, 200, "text/html", sb_to_sv(sc->body)); \
     }
 

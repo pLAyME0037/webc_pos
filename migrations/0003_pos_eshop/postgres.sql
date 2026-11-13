@@ -176,7 +176,6 @@ CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY DEFAULT ((gen_random_uuid()::text)),
     customer_type_dict_id TEXT NOT NULL DEFAULT 'TEIR_1' REFERENCES dictionaries(id) ON DELETE RESTRICT,
     loyalty_points INTEGER NOT NULL DEFAULT 0,
-    metadata TEXT DEFAULT NULL, -- JSON
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL

@@ -14,6 +14,23 @@ Status vocabulary:
 **blocked** = needs something first
 
 ---
+## 2026-11-13 — Memory-efficient SQL paging, XSS fix, & single-row edit lookup — **pending test run**
+
+- Fixed Reflected XSS in `page_href()` (`src/layout/paging.c`): percent-encoded
+  unsafe characters in `base` and copied query pairs, and stripped `fragment`
+  alongside `page_key` and `per_key` so `?fragment=1` never leaks into URLs.
+- Replaced eager `?fragment=all` full-table preloading (`pager_templates.h.tt`
+  removed) with on-demand `?fragment=1` single-page chunking and a 3-entry LRU
+  cache in `js/PaginationSwitcher.js` (re-arms `md:swapped` on page flip).
+- Fixed negative/overflow query parsing in `page_query_size()`, `Showing 0-0 of
+  0 rows` on empty results, and master `No` column numbering (`offset + ri + 1`).
+- Raised `PAGE_MAX_PER_PAGE` to `500` and kept custom `?per_page=<N>` active
+  indicator in `pagination.h.tt` alongside `10 | 20 | 50`.
+- Added SQL `COUNT(*)` + `LIMIT/OFFSET` per child tab in `master_child.c`
+  (`<table>_page` and `<table>_per_page`).
+- Added `read_note_by_id()` and `read_user_by_id()` so `SERVE_EDIT` runs in
+  O(1) memory instead of loading the entire table.
+
 ## 2026-11-12 — Security & Memory Leak Fixes (Auth, Route ID, Leaks, Notes, POS) — **done**
 
 - Fixed auth bypass in auth_gate: orphaned sessions for soft-deleted accounts
@@ -1475,3 +1492,52 @@ to the working tree.
 | measurements | `./build/bin/nob` green; suite = **21 FAILs, identical set to the `bc72a43` baseline** + img25/0. Baseline worktree at `/home/playme/wc_baseline` (removable); logs `/home/playme/baseline.log`, `suite11.log` |
 | risk notes | user edits concurrently: caught 2 of their in-flight breakages mid-round (literal `INT(ri)` td, missing `;`) - build+suite after every batch; `No` numbering is page-local (`ri + 1`); th/td churn assumes the No column ships |
 | roadmap (not this round) | perf round (`0012_perf_indexes` x3 + `?fragment=<n>` + `PaginationSwitcher.js` per-page cache + seeded-500 measurement) still queued |
+
+## 2026-11-13 — users Activity child (customer_interactions) + customers.metadata drop
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user's `/pos/users` "Customers" child tab 500s: `SELECT ... FROM customers WHERE customer_id = <user id>` -> `no such column: customer_id`. Root: 0003 puts the link on the USER side (`users.customer_id NULL REFERENCES customers(id)`, soft-delete triggers cascade the two) - a customers-scoped child can never filter by user. Second verdict from user: `customers.metadata` is dead (runtime never renders/writes it - only the 0004 seed fills it) -> drop the column |
+| discovered shape | `customer_interactions` already carries the real per-user link (`user_id -> users`) plus full CRUD routes (`route.c:341-344` create/update/delete/restore) and `itc_opt_fields {user_id, customer_id}`; the customers page already shows the mirror child (Activity scoped by `customer_id`). `customers` has no name column (0003 view comment: person names live in `users.customer_id`) so a customer FK cell displays `id` (orders.c precedent) |
+| design: child tab | users children[1] becomes `customer_interactions` (title `Activity`, `fk_column = user_id`, `crud_path = /pos/customer_interactions`, `soft_delete = 1`) with a local column array: `MD_FK(customer_id -> customers.id)` + `MD_STACK(Event: kind, payload)` - the parent user is the tab scope, so no user column (mirrors customers.c `md_interaction_columns` minus the user FK). The dead `pos_user_cust_columns` array goes with the broken tab |
+| design: metadata drop | amend shipped 0003 x3 (customers DDL line only) + 0004 seed where real (column list + `NULL` value per row) -> D5: re-pin `test/golden/0003_pos_eshop.sqlite3.sql` same commit; `customers.c`: INSERT x3 drops the column, bind3 removed, `count < 3 -> < 2`, `cst_opt_fields` becomes `{}` (SERVE_* macros accept zero optional fields); pos_test customer row-db assert drops metadata |
+| measurements | `./build/bin/nob` green; full suite vs the `bc72a43` 21-fail baseline + img 25/0 - the 4 NEW pos fails from the users-page 500 must be gone; golden byte-pin green after re-pin |
+| affected docs | `wiki/dev-log.md` (this); no wiki column list mentions customers.metadata (grep clean) |
+| risk notes | empty opt-array `{}` relies on GNU C zero-size arrays (flags are `-Wall -Wextra -Wswitch-enum`, no `-pedantic`) - build confirms; mysql seed column/value lists must stay aligned; existing DBs on the shipped 0003 take the documented backup+rebuild path (standard for every D5 amend) |
+| roadmap (not this round) | Actions `<th>`/button gating (derive visibility from existing config fields, no `has_*`) still queued; perf round (`0012_perf_indexes` x3 + `?fragment=<n>` + PaginationSwitcher cache) still queued |
+
+### Results — Activity child + metadata drop (2026-11-13 entry)
+
+| | |
+|---|---|
+| shipped | users children[1] = `customer_interactions` (title `Activity`, `fk user_id`, CRUD routes already existed at `route.c:341-344`) with local `pos_user_interaction_columns` (customer FK -> `customers.id` + Event stack); broken Customers tab + dead `pos_user_cust_columns` removed. `customers.metadata` dropped: 0003 x3 DDL line, 0004 seed sqlite+mysql (column list + `NULL` value in 8 rows x2), `customers.c` INSERT x3 + bind3 gone + `count < 3 -> 2` in create/update + `cst_opt_fields {}` (GNU empty initializer, builds clean under `-Wall -Wextra`); golden `test/golden/0003_pos_eshop.sqlite3.sql` re-pinned same commit (D5) |
+| test churn | pos_test: customer row-db assert drops the metadata column; users children chk now also asserts `data-tab="customer_interactions"`; users th 9->8 and user row tds 9->8 - the customer column left the users master in user's `8fef864` (link lives on `users.customer_id`, browsed from /pos/customers' Users child). suite11 ran 6h BEFORE that commit landed, which is why baseline had users th green - stale expect, churned down |
+| measurements | build green; full suite = **21 FAILs, byte-identical set to the suite11/`bc72a43` baseline** (http119/1, pos372/17, shop118/0, role48/0, crud157/3, geo32/0, img25/0, mysql41/0, https6/0); all 3 golden migration pins green; the 4 new users-page 500s (`no such column: customer_id`) gone |
+| risk notes | existing sqlite DBs on the shipped 0003 take the documented backup+rebuild path (customers loses metadata); org/products/order `metadata` columns untouched; `users.customer_id` stays as-is (opt form field + cascade triggers) |
+| follow-ups | Actions `<th>`/button gating (derive visibility from config fields, no `has_*`) still queued; perf round (`0012_perf_indexes` x3 + `?fragment=<n>` + PaginationSwitcher cache) still queued |
+
+## 2026-11-13 — finish the fragment round (single-page pg-frag + LRU)
+
+### Plan
+
+| | |
+|---|---|
+| what begins | user's perf/fragment WIP: the `?fragment=all` full-store dump (`pg-store` div + one `<template data-pg-pager>` per page, `pager_templates.h.tt`) is replaced by `?fragment=1` single-page fragments (`pg-frag` div carrying `<tbody id>` + that page's own nav) with PaginationSwitcher.js doing on-demand fetches through a 3-entry LRU. Build was broken mid-refactor and got unblocked first (count/load signature + `md_child_where` guard + child SQL window, paging.c `per_key`/`per_page` swaps + `=` slips, restored `render_users_edit_page`); 7 http tests still pin the old contract |
+| design | server side is complete after the build fixes: user/notes/master_child templates emit `pg-frag` with `<tbody id>` + pagination include inside the fragment; `md_child_tab` no longer embeds child stores (a child flip whose response lacks the child tbody SSR-fallbacks via `location.assign`); child tabs get independent `?<table>_page` + `?<table>_per_page` keys and the child nav emits both |
+| design: test churn | fragment tests move to `fragment=1` and assert the new shape (no DOCTYPE, `id="pg-frag"`, `<tbody id="...">`, nav with `data-pg-n`, NO `pg-store`/`data-pg-unit`/template pagers); "holds every row" becomes "holds one page of rows" (the LRU fetches the rest); child-window tests pass `notes_per_page=1` explicitly since the child per-size key no longer inherits the master's `per_page` |
+| measurements | `./build/bin/nob` green; full suite against the 21-fail baseline + img 25/0 |
+| affected docs | `wiki/dev-log.md` (this); PaginationSwitcher.js contract comment already rewritten in the WIP |
+| risk notes | child client-side page swap only engages when a fragment response carries that child's tbody - today it degrades to a full SSR reload (the embedded child store was deliberately removed); revisit if child flips feel slow |
+| roadmap (not this round) | Actions `<th>`/button gating still queued; `0012_perf_indexes` still queued |
+
+### Results — fragment round finished (2026-11-13 entry)
+
+| | |
+|---|---|
+| shipped | build unblock for user's WIP: `count_child_rows` out-param back to `size_t *` (caller passes `&child_total`); `md_child_where` guard `if (!child->soft_delete) trash = ""` (the WIP had it inverted - soft_delete tabs lost their live/trash filter and non-soft tables got `deleted_at` on tables that may not have it); child SQL rebuilt on the shared `where` with `LIMIT/OFFSET` moved AFTER `ORDER BY` (was `WHERE %s%s ORDER BY` referencing the removed locals, and limit-before-order is invalid SQL); paging.c: `page_info_parse` had `per_key`/`per_page` swapped both ways (parse read the size as a key name, wrote numbers into the key pointer), `total = 0` -> `==`, `c = 0x7f` -> `==`, digit guard `&&` -> `||`, `page_href` local `per_page` shadowing the size param -> `per_key` + strip-loop compared against `page_key` with `per_key_len` -> `per_key`; paging.h garbled comment head; restored `render_users_edit_page` (cut in the `render_users_page` rewrite while route + `SERVE_EDIT(users)` + `user_edit.h.tt` still need it) |
+| test churn | http_test fragment contract x3: `fragment=all` -> `fragment=1`, assert `pg-frag` + `<tbody id>` + nav (`data-pg-n="2"`), absence of DOCTYPE/`pg-store`/`data-pg-unit`/`<template data-pg-pager>`; "holds every row" -> one page of rows (LRU fetches the rest); child-window tests now pass `notes_per_page=1` explicitly - child per-size keys are per-table (`?<table>_per_page`) and no longer inherit the master's `per_page` |
+| measurements | build green; full suite = **21 FAILs, byte-identical set to the suite11/`bc72a43` baseline** (http119/1, pos372/17, shop118/0, role48/0, crud157/3, geo32/0, img25/0, mysql41/0, https6/0); golden x3 green; logs `/home/playme/suite14.log` |
+| risk notes | child page flips SSR-fallback (full reload) because the embedded child store was deliberately removed - the JS only client-swaps when the fragment response carries that child's tbody; `md_child_where` semantic fix re-verified against the trash-banner/baseline tests (byte-identical set) |
+| follow-ups | Actions `<th>`/button gating still queued; `0012_perf_indexes` x3 + seeded-500 measurement still queued |

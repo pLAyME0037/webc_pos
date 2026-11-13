@@ -97,21 +97,17 @@ static char *build_column_list(const MD_ChildTab *child) {
     return sb.items;
 }
 
-static bool load_child_rows(db_t              *db,
-                            const MD_ChildTab *child,
-                            const char        *master_id,
-                            bool               show_deleted,
-                            MD_ChildRows      *out_rows)
+static const char *md_child_where(db_t              *db,
+                                  const MD_ChildTab *child,
+                                  const char        *master_id,
+                                  bool               show_deleted)
 {
-    char *cols = build_column_list(child);
-    char *where_fk = NULL;
-    // Same live/trash rule as the master list: soft_delete tabs hide the
-    // trash, ?deleted=1 shows ONLY the trash (restore buttons gate on it).
     const char *trash = "";
-    if (child->soft_delete) {
-        trash = show_deleted ? " AND deleted_at IS NOT NULL"
-                             : " AND deleted_at IS NULL";
-    }
+    if (show_deleted) trash = " AND deleted_at IS NOT NULL";
+    else trash = " AND deleted_at IS NULL";
+    if (!child->soft_delete) trash = "";
+
+    char *where_fk = NULL;
     if (child->fk_subquery != NULL) {
         where_fk = temp_sprintf(child->fk_subquery,
                                 md_sql_quote(master_id, db->lang));
@@ -119,22 +115,62 @@ static bool load_child_rows(db_t              *db,
         where_fk = temp_sprintf("%s = '%s'", child->fk_column,
                                 md_sql_quote(master_id, db->lang));
     }
-    char *sql = temp_sprintf("SELECT %s FROM %s WHERE %s%s "
-                             "ORDER BY %s DESC;",
-                             cols, child->table, where_fk, trash,
-                             child->id_column);
+    return temp_sprintf("%s%s", where_fk, trash);
+}
+
+static bool count_child_rows(db_t              *db,
+                             const MD_ChildTab *child,
+                             const char        *master_id,
+                             bool               show_deleted,
+                             size_t            *out)
+{
+    const char *where = md_child_where(db, child, master_id, show_deleted);
+    char *sql = temp_sprintf("SELECT count(*) FROM %s WHERE %s;",
+                             child->table, where);
+    sql_stmt stmt = {0};
+    if (!sql_prepare(db, sql, &stmt)) return false; 
+
+    bool ok = false;
+    if (sql_step(&stmt) == SQL_ROW) {
+        long long cnt = sql_column_int64(&stmt, 0);
+        if (cnt < 0) cnt = 0;
+        *out = (size_t)cnt;
+        ok = true;
+    } else {
+        nob_log(NOB_ERROR, "master_child child count %s", db_errmsg(db));
+    }
+    sql_finalize(&stmt);
+    return ok;
+}
+
+static bool load_child_rows(db_t              *db,
+                            const MD_ChildTab *child,
+                            const char        *master_id,
+                            bool               show_deleted,
+                            const Page_Info   *slice,
+                            MD_ChildRows      *out_rows)
+{
+    char *cols = build_column_list(child);
+    const char *where = md_child_where(db, child, master_id, show_deleted);
+    const char *limit_offset = "";
+    if (slice != NULL) {
+        limit_offset = temp_sprintf(" LIMIT %zu OFFSET %zu",
+                                    slice->per_page, slice->offset);
+    }
+    char *sql = temp_sprintf("SELECT %s FROM %s WHERE %s "
+                             "ORDER BY %s DESC%s;",
+                             cols, child->table, where,
+                             child->id_column, limit_offset);
     free(cols);
     sql_stmt stmt = {0};
-    if (!sql_prepare(db, sql, &stmt)) {
-        return false;
-    }
+    if (!sql_prepare(db, sql, &stmt)) { return false; }
     Sql_Step ret;
     for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
         int col_count = sql_column_count(&stmt);
         MD_ChildRow row = {0};
-        row.value_count = col_count;
-        row.values = malloc(col_count * sizeof(char *));
-        row.disp   = malloc(col_count * sizeof(char *));
+        row.value_count = (size_t)col_count;
+        row.values      = malloc((size_t)col_count * sizeof(char *));
+        row.disp        = malloc((size_t)col_count * sizeof(char *));
         for (int i = 0; i < col_count; ++i) {
             row.values[i] = col_to_str(&stmt, i);
             row.disp[i]   = temp_strdup(row.values[i]);
@@ -479,6 +515,7 @@ static bool md_load_master_with_children(db_t                  *db,
                                          const MD_MasterConfig *config,
                                          MD_MasterRows         *rows,
                                          const Page_Info       *slice,
+                                         const Page_Info       *child_pages,
                                          bool                   show_deleted,
                                          MD_Search             *search)
 {
@@ -501,7 +538,8 @@ static bool md_load_master_with_children(db_t                  *db,
     int nbinds = 0;
     const char *limit_offset = "";
     if (slice != NULL) {
-        limit_offset = temp_sprintf(" LIMIT %zu OFFSET %zu", slice->per_page, slice->offset);
+        limit_offset = temp_sprintf(" LIMIT %zu OFFSET %zu",
+                                    slice->per_page, slice->offset);
     }
     char *sql = temp_sprintf("SELECT %s FROM %s%s ORDER BY %s DESC%s;",
                              cl.items, config->table,
@@ -520,22 +558,37 @@ static bool md_load_master_with_children(db_t                  *db,
     for (ret = sql_step(&stmt); ret == SQL_ROW; ret = sql_step(&stmt)) {
         int col_count = sql_column_count(&stmt);
         MD_MasterRow row = {0};
-        row.value_count = col_count;
-        row.values = malloc(col_count * sizeof(char *));
-        row.disp   = malloc(col_count * sizeof(char *));
+        row.value_count = (size_t)col_count;
+        row.values = malloc((size_t)col_count * sizeof(char *));
+        row.disp   = malloc((size_t)col_count * sizeof(char *));
         for (int i = 0; i < col_count; ++i) {
             row.values[i] = col_to_str(&stmt, i);
             row.disp[i]   = temp_strdup(row.values[i]);
         }
         row.id = row.values[0];
-        row.children = malloc(config->children_count * sizeof(MD_ChildRows));
+        if (config->children_count > 0) {
+            row.children = malloc(config->children_count * sizeof(MD_ChildRows));
+        } else {
+            row.children = NULL;
+        }
         row.children_count = config->children_count;
         for (size_t ci = 0; ci < config->children_count; ++ci) {
             row.children[ci].items = NULL;
             row.children[ci].count = 0;
             row.children[ci].capacity = 0;
-            if (!load_child_rows(db, &config->children[ci], row.id,
-                                 show_deleted, &row.children[ci])) {
+            row.children[ci].page_info = child_pages[ci];
+
+            size_t child_total = 0;
+            bool child_ok = count_child_rows(db, &config->children[ci], row.id,
+                                             show_deleted, &child_total);
+            if (child_ok) {
+                page_info_finish(&row.children[ci].page_info, child_total);
+                child_ok = load_child_rows(db, &config->children[ci], row.id,
+                                           show_deleted,
+                                           &row.children[ci].page_info,
+                                           &row.children[ci]);
+            }
+            if (!child_ok) {
                 free(row.values);
                 free(row.disp);
                 for (size_t ci2 = 0; ci2 <= ci; ++ci2) {
@@ -614,43 +667,25 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
         serve_error(sc, 500);
         return;
     }
-    // ?fragment=all: load everything, render the bare pagination store
-    // (no header/footer) -- the payload js/PaginationSwitcher.js caches.
     bool fragment = page_fragment_requested(sc->query_string);
-    // ?nojs=1 - the <noscript> escape hatch on a cascade page: with
-    // scripting off GeoCascade.js never fills the village leaf, so a NOT
-    // NULL village_id could never be satisfied and staff could not be
-    // created at all. Presence of the key makes this render ship the full
-    // option list to the CREATE form instead of the lazy cascade (and
-    // suppress geo_data, so the template's <noscript> meta refresh is not
-    // re-emitted here). The list is deliberately NOT given to the inline
-    // update forms: their edit button is JS-only, so that copy would be
-    // ~680 KB per row that no no-JS user can ever open.
-    // Matched on PRESENCE rather than value: the redirect target is built
-    // by appending nojs=1 to a query that may already carry a nojs key,
-    // and only presence guarantees that target comes back as "on".
     bool nojs = form_find(sc->query_string, "nojs", NULL);
     bool lazy_cascade = !nojs;
-    // The view strip is Live + Trash on a soft_delete page (?deleted=1 =
-    // the trash view; no_live hides Live on tables that are never a
-    // directly-filled list, and non-soft_delete pages get no strip). The
-    // per-column filter row in the table's <thead> (?q_<col> per filled
-    // box) filters whichever view is active.
+
     String_View del_sv = {0};
     bool show_deleted = config->soft_delete
         && form_find(sc->query_string, "deleted", &del_sv)
         && sv_eq(del_sv, sv_from_cstr("1"));
-    // Table search: the per-column filter row submits ?q_<col>=<text>
-    // per filled box (one ANDed term each); the legacy ?q + ?qcol pair
-    // still works as one term. Columns come from this page's config
-    // (never interpolated from the URL); every pattern is bound. A qcol
-    // that is empty or unknown searches every displayed column.
+
     String_View q = sv_from_cstr(""), qcol_sv = sv_from_cstr("");
     form_find(sc->query_string, "q", &q);
     form_find(sc->query_string, "qcol", &qcol_sv);
-    if (q.count > 100) q.count = 100;
-    const char *q_text = q.count
-        ? temp_sprintf("%.*s", (int)q.count, q.data) : "";
+    if (q.count > 100) {
+        q.count = 100;
+    }
+    const char *q_text = "";
+    if (q.count > 0) {
+        q_text = temp_sprintf("%.*s", (int)q.count, q.data);
+    }
     const char *qcol_name = "";
     MD_Search search = {0};
     if (q.count > 0) {
@@ -668,41 +703,50 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     }
     for (size_t ci = 0; ci < config->column_count; ++ci) {
         const MD_Column *col = &config->columns[ci];
-        if (!col->name || !md_col_queryable(col)) continue;
+        const char *box_key = NULL;
+        if (col->name != NULL) {
+            box_key = col->name;
+        } else {
+            box_key = col->label;
+        }
+        if (box_key == NULL || !md_col_queryable(col)) {
+            continue;
+        }
         String_View cv = sv_from_cstr("");
-        if (form_find(sc->query_string, temp_sprintf("q_%s", col->name), &cv)) {
+        if (form_find(sc->query_string, temp_sprintf("q_%s", box_key), &cv)) {
             md_search_add(&search, col, cv);
         }
     }
-    Page_Info page_info = {0}; // master list window
-    page_info_parse(sc->query_string, "page", &page_info);
-    bool windowed = !fragment;
-    if (windowed && !md_count_masters(db, config, show_deleted, &search,
-                &page_info.total)) {
+
+    Page_Info page_info = {0};
+    page_info_parse(&page_info, sc->query_string, "page", "per_page");
+    if (!md_count_masters(db, config, show_deleted, &search, &page_info.total)) {
         db_close(db);
         serve_error(sc, 500);
         return;
     }
-    if (windowed) page_info_finish(&page_info, page_info.total);
-    // View strip badge: the trash total (never narrowed by the search).
+    page_info_finish(&page_info, page_info.total);
+
     size_t trash_total = 0;
     if (config->soft_delete) {
         md_count_masters(db, config, true, NULL, &trash_total);
     }
-    // Child tabs share one page key per table (?notes_page=N for every
-    // master); totals are per master and computed in the template.
-    size_t child_slot_count = config->children_count ? config->children_count : 1;
+
+    size_t child_slot_count = 1;
+    if (config->children_count > 0) {
+        child_slot_count = config->children_count;
+    }
     Page_Info child_pages[child_slot_count];
     for (size_t ti = 0; ti < config->children_count; ++ti) {
-        page_info_parse(sc->query_string,
-                temp_sprintf("%s_page", config->children[ti].table),
-                &child_pages[ti]);
+        const char *c_page_key = temp_sprintf("%s_page", config->children[ti].table);
+        const char *c_per_key  = temp_sprintf("%s_per_page", config->children[ti].table);
+        page_info_parse(&child_pages[ti], sc->query_string, c_page_key, c_per_key);
     }
+
     MD_MasterRows *rows = md_master_rows_new();
     MD_FormCols form_cols = {0};
     bool ok = md_load_master_with_children(db, config, rows,
-            windowed ? &page_info : NULL,
-            show_deleted, &search)
+            &page_info, child_pages, show_deleted, &search)
         && md_form_cols_load(db, config, lazy_cascade, &form_cols);
     if (ok) {
         for (size_t i = 0; i < config->column_count; ++i) {
@@ -713,11 +757,6 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
                 md_col_load_options(db, &config->children[ti].columns[cci]);
             }
         }
-        // FK label substitution into display arrays (slot map: a composite
-        // column spans part_count slots whose raw copies already stand in
-        // for disp -- its parts are plain fields, never FK labels). Flat
-        // date columns humanize here ("05 Oct 2026, 11:56" instead of the
-        // raw ISO stamp); values[] keep the raw form for edit prefills.
         for (size_t ri = 0; ri < rows->count; ++ri) {
             MD_MasterRow *r = &rows->items[ri];
             for (size_t ci = 0; ci < config->column_count; ++ci) {
@@ -770,17 +809,13 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
             }
         }
     }
-    // A fk_cascade column (village_id) renders ancestor navigation selects
-    // whose options come from this compact dataset - built while the
-    // connection is still open. NULL = no cascade on this page, or the
-    // query failed; the template then falls back to the plain select.
-    // Suppressed on ?nojs=1: there the plain select IS the full list, and
-    // keeping geo_data NULL is also what stops the <noscript> meta
-    // refresh from being re-emitted (no redirect loop).
+
     const char *geo_data = NULL;
     if (!nojs) {
         for (size_t i = 0; i < config->column_count && !geo_data; ++i) {
-            if (config->columns[i].fk_cascade) geo_data = md_cascade_json(db, rows, config);
+            if (config->columns[i].fk_cascade) {
+                geo_data = md_cascade_json(db, rows, config);
+            }
         }
     }
     db_close(db);
@@ -790,20 +825,13 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
         serve_error(sc, 500);
         return;
     }
-    if (fragment) page_info_finish(&page_info, rows->count);
+
     String_Builder *sb = &sc->body;
     sb->count = 0;
-    // Route path feeds NAV_ACTIVE highlighting in the sidebar and the
-    // ?redirect= targets of every mutation form on this page.
     const char *md_path = temp_sprintf("%.*s", (int)sc->uri.count, sc->uri.data);
-    // Pager scope contract (see display/component/pagination.h.tt).
     String_View page_query = sc->query_string;
     const char *page_base = md_path;
-    const char *page_key = "page";
     const char *page_container = "mc-tbody";
-    // Target of the <noscript> meta refresh on a cascade page: this exact
-    // URL with nojs=1 appended, preserving page/deleted/q/... so the
-    // plain render lands on the same rows the user was looking at.
     const char *nojs_url;
     if (sc->query_string.count) {
         nojs_url = temp_sprintf("%s?%.*s&nojs=1", md_path,
@@ -812,12 +840,15 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     } else {
         nojs_url = temp_sprintf("%s?nojs=1", md_path);
     }
-    if (!fragment) render_page_header(sb, config->title, md_path);
+
+    if (!fragment) {
+        render_page_header(sb, config->title, md_path);
+    }
 #define OUT(buf, size) sb_append_buf(sb, buf, size);
 #define INT(v) sb_append_cstr(sb, temp_sprintf("%zu", v));
 #define LLINT(v) sb_append_cstr(sb, temp_sprintf("%lld", v));
 #define STR(s) sb_append_cstr(sb, s);
-#define ESCAPED(s) sb_append_html_escaped(sb, s ? s : "");
+#define ESCAPED(s) sb_append_html_escaped(sb, (s));
 #define PAGE_TITLE(s) sb_append_cstr(sb, s);
 #include "build/h_to_html/component/master_child.h"
 #undef OUT
@@ -826,7 +857,9 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
 #undef STR
 #undef ESCAPED
 #undef PAGE_TITLE
-    if (!fragment) render_page_footer(sb);
+    if (!fragment) {
+        render_page_footer(sb);
+    }
     md_form_cols_free(&form_cols);
     md_master_rows_free(rows);
     http_render_response(sc, 200, "text/html", sb_to_sv(*sb));

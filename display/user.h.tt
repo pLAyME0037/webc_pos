@@ -81,40 +81,27 @@
 <c> } </c>
 
 <c> if (fragment) { </c>
-<div id="pg-store" hidden>
-    <table data-pg-rows="<c> STR(page_container); </c>" data-pg-unit="1">
-        <tbody>
+<div id="pg-frag">
+    <table data-pg-rows="<c> STR(page_container); </c>">
+        <tbody id="<c> STR(page_container); </c>">
 <c> } else { </c>
 <div class="overflow-x-auto">
     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="bg-gray-50 dark:bg-gray-700">
             <tr>
                 <c> const char *th_class = "px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-auto text-left"; </c>
-                <th class="<c> STR(th_class) </c>">
-                    #
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Profile
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Name
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Username
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Email
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Phone
-                </th>
-                <th class="<c> STR(th_class) </c>">
-                    Action
-                </th>
+                <th class="<c> STR(th_class) </c>">#</th>
+                <th class="<c> STR(th_class) </c>">Profile</th>
+                <th class="<c> STR(th_class) </c>">Name</th>
+                <th class="<c> STR(th_class) </c>">Username</th>
+                <th class="<c> STR(th_class) </c>">Email</th>
+                <th class="<c> STR(th_class) </c>">Phone</th>
+                <th class="<c> STR(th_class) </c>">Action</th>
             </tr>
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
 <c> } </c>
+
         <c> if (users.count != 0) { </c>
             <c> for (size_t i = 0; i < users.count; ++i) { </c>
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
@@ -189,11 +176,12 @@
                 </td>
             </tr>
         <c> } </c>
+
 <c> if (fragment) { </c>
         </tbody>
     </table>
+    <c> #include "./component/pagination.h" </c>
 </div>
-    <c> #include "./component/pager_templates.h" </c>
 <c> } else { </c>
         </tbody>
     </table>

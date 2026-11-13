@@ -50,18 +50,19 @@ void render_users_page(Serve_Context *sc,
                        Page_Info      page_info,
                        bool           fragment)
 {
-    // PAGE_BEGIN's declarations, minus the header: ?fragment=all responses
-    // are the bare pagination store (rows + per-page <template> pagers).
     String_Builder *sb         = &(sc)->body;
     const char *page_title     = "Users";
     const char *current_path   = "/users";
     String_View page_query     = sc->query_string;
     const char *page_base      = current_path;
-    const char *page_key       = "page";
     const char *page_container = "users-tbody";
-    if (!fragment) render_page_header(sb, page_title, current_path);
+    if (!fragment) {
+        render_page_header(sb, page_title, current_path);
+    }
 #include "build/h_to_html/user.h"
-    if (!fragment) render_page_footer(sb);
+    if (!fragment) {
+        render_page_footer(sb);
+    }
 }
 
 void render_users_edit_page(Serve_Context *sc, User user) {
@@ -73,6 +74,79 @@ void render_users_edit_page(Serve_Context *sc, User user) {
 // =========================================================================
 // Data layer
 // =========================================================================
+
+bool read_user_by_id(db_t *db, String_View id, User *out, bool *found) {
+    bool result = true;
+    *found = false;
+    *out = (User){0};
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT id, name, first_name, last_name, username, "
+                         "email, phone, profile_pic "
+                         "FROM Users WHERE id = ? LIMIT 1;",
+        [SQL_MYSQL]    = "SELECT id, name, first_name, last_name, username, "
+                         "email, phone, profile_pic "
+                         "FROM users WHERE id = ? LIMIT 1;",
+        [SQL_POSTGRES] = "SELECT id, name, first_name, last_name, username, "
+                         "email, phone, profile_pic "
+                         "FROM users WHERE id = $1 LIMIT 1;",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt)) {
+        return_defer(false);
+    }
+    if (!sql_bind(&stmt, 1, SQL_SV(id))) {
+        return_defer(false);
+    }
+
+    Sql_Step ret = sql_step(&stmt);
+    if (ret == SQL_ROW) {
+        int column              = 0;
+        const char *rid         = sql_column_text(&stmt, column++);
+        const char *name        = sql_column_text(&stmt, column++);
+        const char *first_name  = sql_column_text(&stmt, column++);
+        const char *last_name   = sql_column_text(&stmt, column++);
+        const char *username    = sql_column_text(&stmt, column++);
+        const char *email       = sql_column_text(&stmt, column++);
+        const char *phone       = sql_column_text(&stmt, column++);
+        const char *profile_pic = sql_column_text(&stmt, column++);
+        if (rid != NULL) { out->id = temp_strdup(rid); }
+        if (name != NULL) { out->name = temp_strdup(name); }
+        if (first_name != NULL) { out->first_name = temp_strdup(first_name); }
+        if (last_name != NULL) { out->last_name = temp_strdup(last_name); }
+        if (username != NULL) { out->username = temp_strdup(username); }
+        if (email != NULL) { out->email = temp_strdup(email); }
+        if (phone != NULL) { out->phone = temp_strdup(phone); }
+        if (profile_pic != NULL) { out->profile_pic = temp_strdup(profile_pic); }
+        *found = true;
+    } else if (ret != SQL_DONE) {
+        nob_log(NOB_ERROR, "read_user_by_id: %s", db_errmsg(db));
+        return_defer(false);
+    }
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool count_users(db_t *db, size_t *out) {
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT count(*) FROM Users;",
+        [SQL_MYSQL]    = "SELECT count(*) FROM users;",
+        [SQL_POSTGRES] = "SELECT count(*) FROM users;",
+    };
+    if (!sql_prepare(db, q[db->lang], &stmt)) return false;
+    bool ok = false;
+    if (sql_step(&stmt) == SQL_ROW) {
+        *out = (size_t)sql_column_int64(&stmt, 0);
+        ok = true;
+    } else {
+        nob_log(NOB_ERROR, "count_users: %s", db_errmsg(db));
+    }
+    sql_finalize(&stmt);
+    return ok;
+}
 
 bool read_users(db_t *db, Users *rows, const Page_Info *slice) {
     bool result = true;
@@ -149,25 +223,6 @@ bool read_users(db_t *db, Users *rows, const Page_Info *slice) {
 defer:
     sql_finalize(&stmt);
     return result;
-}
-
-bool count_users(db_t *db, size_t *out) {
-    sql_stmt stmt = {0};
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "SELECT count(*) FROM Users;",
-        [SQL_MYSQL]    = "SELECT count(*) FROM users;",
-        [SQL_POSTGRES] = "SELECT count(*) FROM users;",
-    };
-    if (!sql_prepare(db, q[db->lang], &stmt)) return false;
-    bool ok = false;
-    if (sql_step(&stmt) == SQL_ROW) {
-        *out = (size_t)sql_column_int64(&stmt, 0);
-        ok = true;
-    } else {
-        nob_log(NOB_ERROR, "count_users: %s", db_errmsg(db));
-    }
-    sql_finalize(&stmt);
-    return ok;
 }
 
 bool create_user(db_t *db, String_View *fields, size_t count) {

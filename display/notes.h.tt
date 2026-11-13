@@ -24,9 +24,9 @@
 <c> } </c>
 
 <c> if (fragment) { </c>
-    <div id="pg-store" hidden>
-        <table data-pg-rows="<c> STR(page_container); </c>" data-pg-unit="1">
-            <tbody>
+    <div id="pg-frag">
+        <table data-pg-rows="<c> STR(page_container); </c>">
+            <tbody id="<c> STR(page_container); </c>">
 <c> } else { </c>
     <table class="w-full text-left border-collapse overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <thead class="bg-indigo-600 text-white">
@@ -40,6 +40,7 @@
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700">
 <c> } </c>
+
             <c> if (notes.count == 0) { </c>
                 <tr>
                     <td colspan="5" class="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
@@ -64,14 +65,14 @@
                     </td>
                 </tr>
             <c> } </c>
+
 <c> if (fragment) { </c>
             </tbody>
         </table>
+        <c> #include "./component/pagination.h" </c>
     </div>
-    <c> #include "./component/pager_templates.h" </c>
 <c> } else { </c>
         </tbody>
     </table>
     <c> #include "./component/pagination.h" </c>
 <c> } </c>
-</div>

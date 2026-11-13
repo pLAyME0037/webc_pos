@@ -95,15 +95,15 @@ FROM seq;
 -- ---------------------------------------------------------------------------
 -- 6. Customers (loyalty varies)
 -- ---------------------------------------------------------------------------
-INSERT IGNORE INTO customers (id, customer_type_dict_id, loyalty_points, metadata, created_at) VALUES
-    ('sd-cus-1', 'TEIR_2', 240, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 120 DAY)),
-    ('sd-cus-2', 'TEIR_1', 35,  NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 120 DAY)),
-    ('sd-cus-3', 'TEIR_3', 860, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 115 DAY)),
-    ('sd-cus-4', 'TEIR_1', 10,  NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 115 DAY)),
-    ('sd-cus-5', 'TEIR_2', 415, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 110 DAY)),
-    ('sd-cus-6', 'TEIR_3', 720, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 110 DAY)),
-    ('sd-cus-7', 'TEIR_1', 55,  NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 105 DAY)),
-    ('sd-cus-8', 'TEIR_2', 330, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 105 DAY));
+INSERT IGNORE INTO customers (id, customer_type_dict_id, loyalty_points, created_at) VALUES
+    ('sd-cus-1', 'TEIR_2', 240, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 120 DAY)),
+    ('sd-cus-2', 'TEIR_1', 35,  DATE_SUB(UTC_TIMESTAMP(), INTERVAL 120 DAY)),
+    ('sd-cus-3', 'TEIR_3', 860, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 115 DAY)),
+    ('sd-cus-4', 'TEIR_1', 10,  DATE_SUB(UTC_TIMESTAMP(), INTERVAL 115 DAY)),
+    ('sd-cus-5', 'TEIR_2', 415, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 110 DAY)),
+    ('sd-cus-6', 'TEIR_3', 720, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 110 DAY)),
+    ('sd-cus-7', 'TEIR_1', 55,  DATE_SUB(UTC_TIMESTAMP(), INTERVAL 105 DAY)),
+    ('sd-cus-8', 'TEIR_2', 330, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 105 DAY));
 
 -- ---------------------------------------------------------------------------
 -- 7. Users: 3 staff accounts + 5 customer accounts (users.customer_id is

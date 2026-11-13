@@ -1,8 +1,10 @@
 #ifndef MASTER_CHILD_H_
 #define MASTER_CHILD_H_
 
-#include "../http/serve.h"
 #include <stddef.h>
+
+#include "paging.h"
+#include "../http/serve.h"
 #include "../../src/db/sql.h"
 
 // =========================================================================
@@ -29,16 +31,16 @@ typedef enum {
 } Col_Type;
 
 typedef struct MD_Column {
+    MD_Option        *opt;        /* runtime: FK dropdown options */
     const char       *name;
     const char       *label;
-    Col_Type          type;
-    int               nullable;
     const char       *fk_table;
     const char       *fk_label;
     const char       *fk_where;   /* raw WHERE fragment scoping the option query */
     const char       *fk_value;
-    MD_Option        *opt;        /* runtime: FK dropdown options */
+    Col_Type          type;
     size_t            opt_count;
+    int               nullable;
     int               fk_cascade; /* leaf of a parent-scoped cascade */
     int               hidden;     /* never displayed; preserved via hidden input
                                      on edit */
@@ -46,11 +48,11 @@ typedef struct MD_Column {
                                      no form input */
 
     /* Sub-columns for composite cells */
-    const char       *style;        /* "stack", "avatar", "activity" */
     struct MD_Column *subcols;      /* Array of child sub-columns */
-    size_t            subcol_count; /* Number of sub-columns */
+    const char       *style;        /* "stack", "avatar", "activity" */
     const char       *read_sql;     /* Custom read/CASE SQL expression */
     const char      **choices;      /* NULL-terminated choice string list */
+    size_t            subcol_count; /* Number of sub-columns */
 } MD_Column;
 
 #define MD_FIELD(name_, label_, type_, ...) \
@@ -137,35 +139,37 @@ typedef struct {
 } MD_ChildRow;
 
 typedef struct {
+    Page_Info    page_info;
     MD_ChildRow *items;
     size_t       count;
     size_t       capacity;
 } MD_ChildRows;
 
 typedef struct {
+    MD_Column   *columns;
     const char  *table;
     const char  *title;
     const char  *fk_column;
     const char  *fk_subquery;
     const char  *id_column;
     const char  *crud_path;
-    MD_Column   *columns;
-    size_t       column_count;
     const char **sum_columns;
+    size_t       column_count;
     size_t       sum_column_count;
     int          soft_delete;
 } MD_ChildTab;
 
 typedef struct {
+    MD_Column    *columns;
+    MD_ChildTab  *children;
     const char   *table;
     const char   *title;
     const char   *id_column;
     const char   *crud_path;   /* POST base: /create, /{id}/update|delete */
-    MD_Column    *columns;
-    size_t        column_count;
     const char  **sum_columns;
+    size_t        column_count;
     size_t        sum_column_count;
-    MD_ChildTab  *children;
+
     size_t        children_count;
     int           soft_delete;
     int           read_only;

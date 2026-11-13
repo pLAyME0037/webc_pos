@@ -22,8 +22,10 @@ typedef struct {
 
 DA_NEW(User, Users)
 
-bool read_users(db_t *db, Users *rows, const Page_Info *slice);
+bool read_user_by_id(db_t *db, String_View id, User *out, bool *found);
 bool count_users(db_t *db, size_t *out);
+
+bool read_users(db_t *db, Users *rows, const Page_Info *slice);
 bool create_user(db_t *db, String_View *fields, size_t count);
 bool update_user(db_t *db, String_View *fields, size_t count, String_View id);
 bool delete_user(db_t *db, String_View id);

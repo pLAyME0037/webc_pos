@@ -43,18 +43,19 @@ void render_notes_page(Serve_Context *sc,
                        Page_Info      page_info,
                        bool           fragment)
 {
-    // PAGE_BEGIN's declarations, minus the header: ?fragment=all responses
-    // are the bare pagination store (rows + per-page <template> pagers).
     String_Builder *sb         = &(sc)->body;
     const char *page_title     = "Note";
     const char *current_path   = "/notes";
     String_View page_query     = sc->query_string;
     const char *page_base      = current_path;
-    const char *page_key       = "page";
     const char *page_container = "notes-tbody";
-    if (!fragment) render_page_header(sb, page_title, current_path);
+    if (!fragment) {
+        render_page_header(sb, page_title, current_path);
+    }
 #include "build/h_to_html/notes.h"
-    if (!fragment) render_page_footer(sb);
+    if (!fragment) {
+        render_page_footer(sb);
+    }
 }
 
 void render_notes_edit_page(Serve_Context *sc, Note note) {
@@ -209,6 +210,72 @@ void serve_notes_api(Serve_Context *sc) {
 // Data layer
 // =========================================================================
 
+bool read_note_by_id(db_t *db, String_View id, Note *out, bool *found) {
+    bool result = true;
+    *found = false;
+    *out = (Note){0};
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT id, user_id, title, "
+                         "datetime(created_at, 'localtime'), body "
+                         "FROM Notes WHERE id = ? LIMIT 1;",
+        [SQL_MYSQL]    = "SELECT id, user_id, title, created_at, body "
+                         "FROM notes WHERE id = ? LIMIT 1;",
+        [SQL_POSTGRES] = "SELECT id, user_id, title, "
+                         "TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS'), body "
+                         "FROM notes WHERE id = $1 LIMIT 1;",
+    };
+
+    if (!sql_prepare(db, q[db->lang], &stmt)) {
+        return_defer(false);
+    }
+    if (!sql_bind(&stmt, 1, SQL_SV(id))) {
+        return_defer(false);
+    }
+
+    Sql_Step ret = sql_step(&stmt);
+    if (ret == SQL_ROW) {
+        int column             = 0;
+        const char *rid        = sql_column_text(&stmt, column++);
+        const char *user_id    = sql_column_text(&stmt, column++);
+        const char *title      = sql_column_text(&stmt, column++);
+        const char *created_at = sql_column_text(&stmt, column++);
+        const char *body       = sql_column_text(&stmt, column++);
+        if (rid != NULL) { out->id = temp_strdup(rid); }
+        if (user_id != NULL) { out->user_id = temp_strdup(user_id); }
+        if (title != NULL) { out->title = temp_strdup(title); }
+        if (created_at != NULL) { out->created_at = temp_strdup(created_at); }
+        if (body != NULL) { out->body = temp_strdup(body); }
+        *found = true;
+    } else if (ret != SQL_DONE) {
+        nob_log(NOB_ERROR, "read_note_by_id: %s", db_errmsg(db));
+        return_defer(false);
+    }
+
+defer:
+    sql_finalize(&stmt);
+    return result;
+}
+
+bool count_notes(db_t *db, size_t *out) {
+    sql_stmt stmt = {0};
+    static const char *const q[SQL_LANG_COUNT] = {
+        [SQL_SQLITE]   = "SELECT count(*) FROM Notes;",
+        [SQL_MYSQL]    = "SELECT count(*) FROM notes;",
+        [SQL_POSTGRES] = "SELECT count(*) FROM notes;",
+    };
+    if (!sql_prepare(db, q[db->lang], &stmt)) return false;
+    bool ok = false;
+    if (sql_step(&stmt) == SQL_ROW) {
+        *out = (size_t)sql_column_int64(&stmt, 0);
+        ok = true;
+    } else {
+        nob_log(NOB_ERROR, "count_notes: %s", db_errmsg(db));
+    }
+    sql_finalize(&stmt);
+    return ok;
+}
+
 bool read_notes(db_t *db, Notes *notes, const Page_Info *slice) {
     bool result = true;
     sql_stmt stmt = {0};
@@ -273,25 +340,6 @@ bool read_notes(db_t *db, Notes *notes, const Page_Info *slice) {
 defer:
     sql_finalize(&stmt);
     return result;
-}
-
-bool count_notes(db_t *db, size_t *out) {
-    sql_stmt stmt = {0};
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "SELECT count(*) FROM Notes;",
-        [SQL_MYSQL]    = "SELECT count(*) FROM notes;",
-        [SQL_POSTGRES] = "SELECT count(*) FROM notes;",
-    };
-    if (!sql_prepare(db, q[db->lang], &stmt)) return false;
-    bool ok = false;
-    if (sql_step(&stmt) == SQL_ROW) {
-        *out = (size_t)sql_column_int64(&stmt, 0);
-        ok = true;
-    } else {
-        nob_log(NOB_ERROR, "count_notes: %s", db_errmsg(db));
-    }
-    sql_finalize(&stmt);
-    return ok;
 }
 
 bool create_note(db_t *db, String_View *values, size_t count) {

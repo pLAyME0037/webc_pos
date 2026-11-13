@@ -58,7 +58,6 @@ static MD_Column md_pos_variant_columns[] = {
     { .name = "attributes", .label = "Attributes", .type = COL_TYPE_TEXT,
       .nullable = true },
 };
-static const size_t md_pos_variant_columns_count = ARRAY_LEN(md_pos_variant_columns);
 
 static MD_Column md_pos_stock_child_columns[] = {
     { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
@@ -69,7 +68,42 @@ static MD_Column md_pos_stock_child_columns[] = {
     { .name = "quantity", .label = "Qty", .type = COL_TYPE_NUM,
       .nullable = false },
 };
-static const size_t md_pos_stock_child_columns_count = ARRAY_LEN(md_pos_stock_child_columns);
+
+void serve_pos_products(Serve_Context *sc) {
+    MD_ChildTab children[] = {
+        {
+            .table        = "product_variants",
+            .title        = "Variants",
+            .fk_column    = "product_id",
+            .id_column    = "id",
+            .crud_path    = "/pos/variants",
+            .columns      = md_pos_variant_columns,
+            .column_count = ARRAY_LEN(md_pos_variant_columns),
+            .soft_delete  = 1,
+        }, {
+            .table        = "inventory_stocks",
+            .title        = "Stock",
+            .fk_column    = "product_id",
+            .id_column    = "id",
+            .crud_path    = "/pos/stocks",
+            .columns      = md_pos_stock_child_columns,
+            .column_count = ARRAY_LEN(md_pos_stock_child_columns),
+            .soft_delete  = 1,
+        },
+    };
+    MD_MasterConfig config = {
+        .table          = "products",
+        .title          = "Products",
+        .id_column      = "id",
+        .crud_path      = "/pos/products",
+        .columns        = md_products_columns,
+        .column_count   = md_products_columns_count,
+        .children       = children,
+        .children_count = ARRAY_LEN(children),
+        .soft_delete    = 1,
+    };
+    serve_master_child(sc, &config);
+}
 
 // DB mutations only -- list loading lives in the master_child engine.
 // One handler serves both views of products (master + child under a
@@ -193,42 +227,6 @@ static bool restore_product(db_t *db, String_View id) {
 defer:
     sql_finalize(&stmt);
     return result;
-}
-
-void serve_pos_products(Serve_Context *sc) {
-    MD_ChildTab children[] = {
-        {
-            .table        = "product_variants",
-            .title        = "Variants",
-            .fk_column    = "product_id",
-            .id_column    = "id",
-            .crud_path    = "/pos/variants",
-            .columns      = md_pos_variant_columns,
-            .column_count = md_pos_variant_columns_count,
-            .soft_delete  = 1,
-        }, {
-            .table        = "inventory_stocks",
-            .title        = "Stock",
-            .fk_column    = "product_id",
-            .id_column    = "id",
-            .crud_path    = "/pos/stocks",
-            .columns      = md_pos_stock_child_columns,
-            .column_count = md_pos_stock_child_columns_count,
-            .soft_delete  = 1,
-        },
-    };
-    MD_MasterConfig config = {
-        .table          = "products",
-        .title          = "Products",
-        .id_column      = "id",
-        .crud_path      = "/pos/products",
-        .columns        = md_products_columns,
-        .column_count   = md_products_columns_count,
-        .children       = children,
-        .children_count = ARRAY_LEN(children),
-        .soft_delete    = 1,
-    };
-    serve_master_child(sc, &config);
 }
 
 static const char *prd_fields[] = { "name", "sku" };

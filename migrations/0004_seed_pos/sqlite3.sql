@@ -108,15 +108,15 @@ FROM seq;
 -- ---------------------------------------------------------------------------
 -- 6. Customers (loyalty varies)
 -- ---------------------------------------------------------------------------
-INSERT OR IGNORE INTO customers (id, customer_type_dict_id, loyalty_points, metadata, created_at) VALUES
-    ('sd-cus-1', 'TEIR_2', 240, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-120 days')),
-    ('sd-cus-2', 'TEIR_1', 35,  NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-120 days')),
-    ('sd-cus-3', 'TEIR_3', 860, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-115 days')),
-    ('sd-cus-4', 'TEIR_1', 10,  NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-115 days')),
-    ('sd-cus-5', 'TEIR_2', 415, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-110 days')),
-    ('sd-cus-6', 'TEIR_3', 720, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-110 days')),
-    ('sd-cus-7', 'TEIR_1', 55,  NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-105 days')),
-    ('sd-cus-8', 'TEIR_2', 330, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-105 days'));
+INSERT OR IGNORE INTO customers (id, customer_type_dict_id, loyalty_points, created_at) VALUES
+    ('sd-cus-1', 'TEIR_2', 240, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-120 days')),
+    ('sd-cus-2', 'TEIR_1', 35,  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-120 days')),
+    ('sd-cus-3', 'TEIR_3', 860, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-115 days')),
+    ('sd-cus-4', 'TEIR_1', 10,  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-115 days')),
+    ('sd-cus-5', 'TEIR_2', 415, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-110 days')),
+    ('sd-cus-6', 'TEIR_3', 720, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-110 days')),
+    ('sd-cus-7', 'TEIR_1', 55,  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-105 days')),
+    ('sd-cus-8', 'TEIR_2', 330, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-105 days'));
 
 -- ---------------------------------------------------------------------------
 -- 7. Users: 3 staff accounts + 5 customer accounts (users.customer_id is

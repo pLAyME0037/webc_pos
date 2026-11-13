@@ -11,8 +11,8 @@
 
 // =========================================================================
 // /pos/customers: customer_type dict FK (CUSTOMER_TYPE only) + loyalty
-// points + created_at. metadata is not a form column (JSON, stays NULL).
-// Children: users (fk customer_id) + customer_interactions.
+// points + created_at. Children: users (fk customer_id) +
+// customer_interactions (fk customer_id).
 // =========================================================================
 
 // Event cell: plain fields only (user_id stays a flat FK column so its
@@ -41,26 +41,24 @@ MD_Column md_customers_columns[] = {
 const size_t md_customers_columns_count = ARRAY_LEN(md_customers_columns);
 
 // DB mutations only -- list loading lives in the master_child engine.
-// metadata is not a form column -> NULL on create, untouched on update.
 static bool create_customer(db_t *db, String_View *fields, size_t count) {
-    if (count < 3) return false;
+    if (count < 2) return false;
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "INSERT INTO customers "
-                         "(customer_type_dict_id, loyalty_points, metadata) "
-                         "VALUES (?, ?, ?);",
+                         "(customer_type_dict_id, loyalty_points) "
+                         "VALUES (?, ?);",
         [SQL_MYSQL]    = "INSERT INTO customers "
-                         "(customer_type_dict_id, loyalty_points, metadata) "
-                         "VALUES (?, ?, ?);",
+                         "(customer_type_dict_id, loyalty_points) "
+                         "VALUES (?, ?);",
         [SQL_POSTGRES] = "INSERT INTO customers "
-                         "(customer_type_dict_id, loyalty_points, metadata) "
-                         "VALUES ($1, $2, $3);",
+                         "(customer_type_dict_id, loyalty_points) "
+                         "VALUES ($1, $2);",
     };
     sql_stmt stmt = {0};
     bool result = true;
     if (!sql_prepare(db, q[db->lang], &stmt))     return_defer(false);
     if (!sql_bind(&stmt, 1, SQL_SV(fields[0])))   return_defer(false);  // tier
     if (!sql_bind(&stmt, 2, sql_num(fields[1])))  return_defer(false);  // points
-    if (!sql_bind(&stmt, 3, sql_fgsv(fields[2]))) return_defer(false);  // meta
     if (!sql_final_step(&stmt))                   return_defer(false);
 defer:
     sql_finalize(&stmt);
@@ -70,7 +68,7 @@ defer:
 static bool update_customer(db_t *db, String_View *fields, size_t count,
                             String_View id)
 {
-    if (count < 3) return false;
+    if (count < 2) return false;
     static const char *const q[SQL_LANG_COUNT] = {
         [SQL_SQLITE]   = "UPDATE customers SET "
                          "customer_type_dict_id = COALESCE(NULLIF(?, ''), "
@@ -172,7 +170,7 @@ void serve_pos_customers(Serve_Context *sc) {
 }
 
 static const char *cst_fields[] = { "customer_type_dict_id", "loyalty_points" };
-static const char *cst_opt_fields[] = { "metadata" };
+static const char *cst_opt_fields[] = {};
 SERVE_CREATE(pos_customers, customer, cst_fields, cst_opt_fields)
 SERVE_UPDATE(pos_customers, customer, cst_fields, cst_opt_fields)
 SERVE_SOFT_DELETE(pos_customers, customer)
