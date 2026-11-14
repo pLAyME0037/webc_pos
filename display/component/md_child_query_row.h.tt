@@ -49,6 +49,22 @@
                 } 
             } </c>
         </select>
+        <c> } else if (fcol->type == COL_TYPE_INPUT_SELECT && !fcol->fk_cascade
+                       && fcol->name != NULL) { </c>
+        <input type="search" name="q_<c> STR(box_key); </c>"
+               form="md-query-form" data-md-qbox
+               list="qdl_<c> STR(fcol->name); </c>"
+               value="<c> ESCAPED(shown_s); </c>"
+               placeholder="<c> ESCAPED(fcol->label); </c>"
+               aria-label="Search <c> ESCAPED(fcol->label); </c>"
+               class="w-full px-1 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+        <datalist id="qdl_<c> STR(fcol->name); </c>">
+            <c>
+            for (size_t o = 0; o < fcol->opt_count; ++o) {
+            </c>
+            <option value="<c> ESCAPED(fcol->opt[o].label); </c>"></option>
+            <c> } </c>
+        </datalist>
         <c> } else { </c>
         <input type="search" name="q_<c> STR(box_key); </c>"
                form="md-query-form" data-md-qbox

@@ -47,6 +47,15 @@ bool form_find(String_View body, const char *key, String_View *out) {
             if (out) *out = url_decode(pair);
             return true;
         }
+        // Keys are form-encoded on the wire like values: a label such as
+        // "Type & Gender" arrives as "q_Type+%26+Gender". Plain keys hit
+        // the raw compare above; only a miss pays for the decode, so a
+        // composite-cell box (box_key = label) still matches its pair.
+        String_View dec = url_decode(name);
+        if (dec.count == key_len && memcmp(dec.data, key, key_len) == 0) {
+            if (out) *out = url_decode(pair);
+            return true;
+        }
     }
     return false;
 }

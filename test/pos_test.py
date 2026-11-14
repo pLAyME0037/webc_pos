@@ -100,7 +100,8 @@ def test_composite_subcolumns_and_type_gender(checker, host, port, tmp):
     c.login_as("sd.staff1", "posadmin1")
 
     # 1. Verify /pos/users renders Type & Gender column and resolves dictionary FK
-    status, body = c.get("/pos/users")
+    status, body, _ = c.get("/pos/users")
+    body = body.decode()
     checker.equal(status, 200, "pos/users loads successfully")
 
     has_header = False
@@ -121,7 +122,7 @@ def test_composite_subcolumns_and_type_gender(checker, host, port, tmp):
     checker.is_true(has_gender_input, "create form has gender select")
 
     has_gender_option = False
-    if '<option value="MALE">MALE</option>' in body:
+    if '<option value="MALE"' in body:
         has_gender_option = True
     checker.is_true(has_gender_option, "gender select has MALE option")
 
@@ -136,7 +137,8 @@ def test_composite_subcolumns_and_type_gender(checker, host, port, tmp):
     checker.is_false(has_raw_sql, "raw sql where clause not leaked into html")
 
     # 3. Verify Filter across all sub-columns
-    status_q, body_q = c.get("/pos/users?q=ADMIN")
+    status_q, body_q, _ = c.get("/pos/users?q=ADMIN")
+    body_q = body_q.decode()
     checker.equal(status_q, 200, "search across sub-columns returns 200")
 
     found_admin = False
@@ -144,7 +146,8 @@ def test_composite_subcolumns_and_type_gender(checker, host, port, tmp):
         found_admin = True
     checker.is_true(found_admin, "search finds row matching composite sub-column FK label")
 
-    status_g, body_g = c.get("/pos/users?q=MALE")
+    status_g, body_g, _ = c.get("/pos/users?q=MALE")
+    body_g = body_g.decode()
     checker.equal(status_g, 200, "search gender returns 200")
 
     found_gender = False
@@ -173,6 +176,53 @@ def main():
           "webc_sid" in hdr.get("Set-Cookie", ""), True)
     t.chk("staff /pos after login", c.get("/pos/provinces")[0], 200)
     t.chk("staff /dashboard after login", c.get("/dashboard")[0], 200)
+
+    # composite sub-columns: create-form parts + filter across every cell
+    # of the stack (legacy ?q all-columns path)
+    test_composite_subcolumns_and_type_gender(t, HOST, PORT, TMP)
+
+    # ---- stack (multi-cell) query boxes: live key + both-side wildcard ----
+    # MD_STACK/AVATAR boxes carry no .name, so box_key = the label; the
+    # browser form-encodes "q_Type & Gender" to q_Type+%26+Gender and
+    # form_find must decode the wire key to find the pair.
+    st, body, _ = c.get("/pos/users?q_Type+%26+Gender=ZZZZ")
+    hq = body.decode()
+    t.chk("Type & Gender box is live (nonsense empties the list)",
+          hq.count('id="md-m-users-'), 0)
+    t.chk("stack box echoes its typed value", 'value="ZZZZ"' in hq, True)
+    lbl = db_row(
+        "SELECT d.label FROM users u JOIN dictionaries d "
+        "ON d.id = u.user_type_dict_id WHERE u.username = 'sd.staff1'")[0]
+    st, body, _ = c.get(
+        "/pos/users?q_Type+%26+Gender=" + urllib.parse.quote(lbl))
+    hq = body.decode()
+    want_n = db_row(
+        "SELECT count(*) FROM users u JOIN dictionaries d "
+        "ON d.id = u.user_type_dict_id WHERE d.label = ? "
+        "AND d.deleted_at IS NULL AND u.deleted_at IS NULL", (lbl,))[0]
+    t.chk("stack box matches its 2nd cell (FK label) exactly",
+          hq.count('id="md-m-users-'), want_n)
+    st, body, _ = c.get("/pos/users?q_Contact=1000001")
+    hq = body.decode()
+    t.chk("both-side wildcard: mid-phone match keeps staff1, drops staff2",
+          ("0121000001" in hq, "0121000002" in hq), (True, False))
+
+    # ---- multi-word query: tokens AND across the box's cells ----
+    # "first last" typed into ONE box must find the stack row: each
+    # token matches some cell of the column (AND across tokens, OR
+    # across cells), in either order.
+    kh_first, kh_last = "សុខ", "ដារា"
+    want_n = db_row(
+        "SELECT count(*) FROM users WHERE first_name = ? "
+        "AND last_name = ? AND deleted_at IS NULL",
+        (kh_first, kh_last))[0]
+    for order, q in (("forward", kh_first + " " + kh_last),
+                     ("reversed", kh_last + " " + kh_first)):
+        st, body, _ = c.get("/pos/users?q_User=" + urllib.parse.quote(q))
+        hq = body.decode()
+        t.chk(f"multiword {order}: combined name finds exactly its row",
+              (hq.count('id="md-m-users-'), "sd.staff1" in hq),
+              (want_n, True))
     # Phase 13: the sidebar card is the signed-in session user, not the
     # first users-table row - provinces never lists users, so the staff
     # name can only come from the sidebar identity.
@@ -699,6 +749,32 @@ def main():
           (fhtml.count('id="md-m-products-') == 1
            and bool(re.search(r'<option value="Kid Renamed"\s*selected\s*>',
                               fhtml))), True)
+
+    # ---- COL_TYPE_INPUT_SELECT: search box with server <datalist> ----
+    # The name box is an input whose suggestions are the column's own
+    # distinct values (one datalist, referenced by query + create +
+    # edit inputs); the posted text filters like any LIKE term. The
+    # value splits on spaces, so the expected count mirrors the server:
+    # every token must LIKE-match the (single-cell) name column.
+    pname = db_row("SELECT name FROM products WHERE deleted_at IS NULL "
+                   "ORDER BY length(name) DESC LIMIT 1")[0]
+    st, body, _ = c.get("/pos/products")
+    fhtml = body.decode()
+    t.chk("product name box = input + datalist of product names",
+          ('name="q_name"' in fhtml
+           and 'list="qdl_name"' in fhtml
+           and '<datalist id="qdl_name">' in fhtml
+           and 'value="' + pname + '"' in fhtml), True)
+    t.chk("create + edit inputs reference the one datalist",
+          fhtml.count('list="qdl_name"') >= 2, True)
+    st, body, _ = c.get("/pos/products?q_name=" + urllib.parse.quote(pname))
+    want_n = db_row(
+        "SELECT count(*) FROM products WHERE deleted_at IS NULL"
+        + "".join(" AND name LIKE ?" for _ in pname.split()),
+        tuple("%" + tok + "%" for tok in pname.split()))[0]
+    t.chk("datalist value narrows to exactly its products",
+          (body.decode().count('id="md-m-products-'), want_n),
+          (want_n, want_n))
 
     st, _, _ = c.post_urlencoded(
         f"/pos/products/{pid}/update?redirect=/pos/products",
@@ -1340,6 +1416,32 @@ def main():
     t.chk("staff edit row has STAFF_TYPE select",
           'name="staff_type_dict_id"' in edit, True)
     t.chk("staff child tab (shifts)", 'data-tab="cash"' in html, True)
+
+    # ---- fk-backed COL_TYPE_INPUT_SELECT: Org query box ----
+    # The query box is a search input whose <datalist> holds the org
+    # labels (posting the label hits md_append_col_search's label
+    # EXISTS); the create/edit forms keep the id <select>.
+    st, body, _ = c.get("/pos/staff")
+    sh = body.decode()
+    org = db_row("SELECT ou_name FROM org_units "
+                 "WHERE ou_name = 'Main Depot'")[0]
+    t.chk("staff Org box = input + org datalist, form keeps select",
+          ('name="q_org_unit_id"' in sh
+           and 'list="qdl_org_unit_id"' in sh
+           and '<datalist id="qdl_org_unit_id">' in sh
+           and 'value="' + org + '"' in sh
+           and '<select name="q_org_unit_id"' not in sh
+           and '<select name="org_unit_id"' in sh), True)
+    st, body, _ = c.get("/pos/staff?q_org_unit_id="
+                        + urllib.parse.quote(org))
+    want_n = db_row(
+        "SELECT count(*) FROM staff s "
+        "JOIN org_units o ON o.id = s.org_unit_id "
+        "WHERE s.deleted_at IS NULL AND o.deleted_at IS NULL "
+        "AND o.ou_name LIKE ?", ("%" + org + "%",))[0]
+    t.chk("org datalist value narrows staff to its members",
+          (body.decode().count('id="md-m-staff-'), want_n),
+          (want_n, want_n))
 
     # shift child under the staff member (staff_id via query)
     st, _, _ = c.post_urlencoded(

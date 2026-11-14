@@ -26,6 +26,7 @@ typedef enum {
     COL_TYPE_DATE,
     COL_TYPE_TEXTAREA,
     COL_TYPE_FK_SELECT,
+    COL_TYPE_INPUT_SELECT,
     COL_TYPE_IMG,
     COL_TYPE_COMPOSITE,
 } Col_Type;
@@ -81,6 +82,19 @@ typedef struct MD_Column {
         .label   = (label_),                   \
         .type    = COL_TYPE_TEXT,              \
         .choices = (choices_), __VA_ARGS__ })
+
+/* A search box with suggestions: the query row renders an <input> whose
+ * <datalist> is fed from .choices, else the fk labels ( fk_table +
+ * fk_label, soft-delete/fk_where scoped, capped at 200), else the
+ * distinct values of this column in its own table. Forms: fk-backed
+ * keeps the FK <select> storing the id; a plain column renders
+ * <input list> storing the text. No JS - the browser filters the
+ * server-rendered <datalist> as you type. */
+#define MD_INPUT_SELECT(name_, label_, ...)\
+    ((MD_Column) {                          \
+        .name  = (name_),                   \
+        .label = (label_),                  \
+        .type  = COL_TYPE_INPUT_SELECT, __VA_ARGS__ })
 
 #define MD_STACK(label_, ...) {                   \
     .label        = (label_),                     \

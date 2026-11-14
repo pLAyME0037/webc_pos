@@ -106,7 +106,7 @@
                     </div>
                 </div>
             </div>
-            <c> } else if (scol->type == COL_TYPE_FK_SELECT) { </c>
+            <c> } else if (scol->type == COL_TYPE_FK_SELECT || (scol->type == COL_TYPE_INPUT_SELECT && scol->fk_table != NULL)) { </c>
                 <select form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
                         name="<c> ESCAPED(scol->name); </c>"
                         <c> if (!scol->nullable) { </c>required<c> } </c>
@@ -176,7 +176,7 @@
                     </div>
                 </div>
             </div>
-            <c> } else if (ccol->type == COL_TYPE_FK_SELECT) { </c>
+            <c> } else if (ccol->type == COL_TYPE_FK_SELECT || (ccol->type == COL_TYPE_INPUT_SELECT && ccol->fk_table != NULL)) { </c>
             <select form="mdf-e-<c> STR(config->children[ti].table); </c>-<c> STR(rows->items[ri].children[ti].items[ci].values[0]); </c>"
                     name="<c> STR(ccol->name); </c>"
                     class="w-full px-0.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white">

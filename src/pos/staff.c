@@ -45,7 +45,7 @@ MD_Column md_staff_columns[] = {
     },
     { .name = "user_id", .label = "User", .type = COL_TYPE_FK_SELECT,
       .nullable = false, .fk_table = "users", .fk_label = "name" },
-    { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_FK_SELECT,
+    { .name = "org_unit_id", .label = "Org", .type = COL_TYPE_INPUT_SELECT,
       .nullable = false, .fk_table = "org_units", .fk_label = "ou_name" },
     { .name = "staff_type_dict_id", .label = "Role", .type = COL_TYPE_FK_SELECT,
       .nullable = true, .fk_table = "dictionaries", .fk_label = "label",

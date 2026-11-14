@@ -182,6 +182,19 @@ class Checker:
             self.failed += 1
             print(f"FAIL: {name} got=[{got}] want=[{want}]")
 
+    # Assertion-style helpers (the drafted composite tests use these).
+    def equal(self, got, want, name):
+        self.chk(name, got, want)
+
+    def is_true(self, cond, name):
+        self.chk(name, bool(cond), True)
+
+    def is_false(self, cond, name):
+        self.chk(name, bool(cond), False)
+
+    def client(self, host, port):
+        return Client(host, port)
+
     def summary(self):
         print(f"=== {self.passed} passed, {self.failed} failed ===")
         return self.failed == 0

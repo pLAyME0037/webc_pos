@@ -14,7 +14,7 @@
 // =========================================================================
 
 MD_Column md_products_columns[] = {
-    MD_FIELD("name", "Product Name", COL_TYPE_TEXT, .nullable = false),
+    MD_INPUT_SELECT("name", "Product Name", .nullable = false),
     MD_STACK("Codes",
         MD_FIELD("sku", "SKU", COL_TYPE_TEXT, .nullable = false),
         MD_FIELD("barcode", "Barcode", COL_TYPE_TEXT, .nullable = true)

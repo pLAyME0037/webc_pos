@@ -196,19 +196,73 @@ static const char *md_fk_options_where(const MD_Column *col) {
         : " WHERE deleted_at IS NULL";
 }
 
-static void md_col_load_options(db_t *db, MD_Column *col) {
+// Does this column store the parent id (the cell shows the label via
+// md_fk_display, the form renders the FK <select>)? FK_SELECT always
+// did once it names a table; INPUT_SELECT only when it is fk-backed -
+// a plain INPUT_SELECT stores its own text.
+static bool md_id_backed(const MD_Column *col) {
+    return col != NULL && col->fk_table != NULL &&
+           (col->type == COL_TYPE_FK_SELECT ||
+            col->type == COL_TYPE_INPUT_SELECT);
+}
+
+// Fill col->opt (runtime only: ids/labels live in the temp arena, the
+// array on the heap - freed here each load or every page render grows).
+// Sources by type: .choices if set, else the parent's id+label pairs
+// for fk-backed columns (INPUT_SELECT caps at 200 - it ships as
+// <datalist> suggestions), else a plain INPUT_SELECT's own distinct
+// values in self_table (soft-delete scoped, capped at 200).
+static void md_col_load_options(db_t *db, MD_Column *col,
+                                const char *self_table, int soft_delete) {
     if (col == NULL) return;
     if (col->subcols != NULL && col->subcol_count > 0) {
         for (size_t p = 0; p < col->subcol_count; ++p) {
-            md_col_load_options(db, &col->subcols[p]);
+            md_col_load_options(db, &col->subcols[p], self_table, soft_delete);
         }
         return;
     }
-    if (col->type != COL_TYPE_FK_SELECT || col->fk_table == NULL) return;
     if (col->fk_cascade) return;
-    char *sql = temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC;",
-            col->fk_label, col->fk_table, md_fk_options_where(col),
-            col->fk_label);
+    bool two_col = true;
+    char *sql = NULL;
+    if (col->type == COL_TYPE_INPUT_SELECT && col->choices != NULL) {
+        size_t count = 0;
+        while (col->choices[count] != NULL) ++count;
+        MD_Option *items = NULL;
+        if (count > 0) {
+            items = malloc(count * sizeof(MD_Option));
+            for (size_t i = 0; i < count; ++i) {
+                items[i].id = temp_strdup(col->choices[i]);
+                items[i].label = items[i].id;
+            }
+        }
+        free(col->opt);
+        col->opt = items;
+        col->opt_count = count;
+        return;
+    }
+    if (md_id_backed(col) && col->fk_label != NULL) {
+        sql = col->type == COL_TYPE_INPUT_SELECT
+            ? temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC LIMIT 200;",
+                    col->fk_label, col->fk_table, md_fk_options_where(col),
+                    col->fk_label)
+            : temp_sprintf("SELECT id, %s FROM %s%s ORDER BY %s ASC;",
+                    col->fk_label, col->fk_table, md_fk_options_where(col),
+                    col->fk_label);
+    } else if (col->type == COL_TYPE_INPUT_SELECT &&
+               self_table != NULL && col->name != NULL) {
+        // The suggestion set IS the column's own data (product names,
+        // ...): DISTINCT keeps the <datalist> at one entry per value.
+        two_col = false;
+        sql = temp_sprintf(
+                "SELECT DISTINCT %s, %s FROM %s WHERE %s IS NOT NULL "
+                "AND %s != ''%s ORDER BY %s ASC LIMIT 200;",
+                md_col_sql(col), md_col_sql(col), self_table,
+                md_col_sql(col), md_col_sql(col),
+                soft_delete ? " AND deleted_at IS NULL" : "",
+                md_col_sql(col));
+    } else {
+        return;
+    }
     sql_stmt stmt = {0};
     if (!sql_prepare(db, sql, &stmt)) {
         return;
@@ -231,18 +285,19 @@ static void md_col_load_options(db_t *db, MD_Column *col) {
         } else {
             items[count].id = temp_strdup(lid);
         }
-        const char *l = sql_column_text(&stmt, 1);
-        if (l == NULL) {
-            items[count].label = temp_strdup("");
+        if (two_col) {
+            const char *l = sql_column_text(&stmt, 1);
+            if (l == NULL) {
+                items[count].label = temp_strdup("");
+            } else {
+                items[count].label = temp_strdup(l);
+            }
         } else {
-            items[count].label = temp_strdup(l);
+            items[count].label = items[count].id;
         }
         count++;
     }
     sql_finalize(&stmt);
-    // Static configs survive across requests: drop the option array from
-    // the previous load (labels/ids are temp-arena, only the array is
-    // heap) or every page render grows the process.
     free(col->opt);
     col->opt = items;
     col->opt_count = count;
@@ -253,7 +308,7 @@ static void md_col_load_options(db_t *db, MD_Column *col) {
 // soft-deleted parent - pre-cascade legacy data, or a parent the fk_where
 // filter hides - must render its name, not a raw uuid.
 static const char *md_fk_display(db_t *db, const MD_Column *col, const char *id) {
-    if (!col || col->type != COL_TYPE_FK_SELECT || !id || !id[0]) return id;
+    if (!md_id_backed(col) || !id || !id[0]) return id;
     for (size_t i = 0; i < col->opt_count; ++i) {
         if (strcmp(id, col->opt[i].id) == 0) return col->opt[i].label;
     }
@@ -292,9 +347,10 @@ static bool md_form_cols_load(db_t *db, const MD_MasterConfig *config,
         MD_FormCol fc = { .col = &config->columns[i] };
         if (fc.col->subcols != NULL && fc.col->subcol_count > 0) {
             for (size_t p = 0; p < fc.col->subcol_count; ++p) {
-                md_col_load_options(db, &fc.col->subcols[p]);
+                md_col_load_options(db, &fc.col->subcols[p],
+                                    config->table, config->soft_delete);
             }
-        } else if (fc.col->type == COL_TYPE_FK_SELECT && fc.col->fk_table != NULL) {
+        } else if (md_id_backed(fc.col) && fc.col->fk_label != NULL) {
             bool skip_cascade = false;
             if (fc.col->fk_cascade && lazy_cascade) {
                 skip_cascade = true;
@@ -342,15 +398,20 @@ static bool md_col_queryable(const MD_Column *col) {
 }
 
 #define MD_MAX_SEARCH_TERMS 8
+#define MD_MAX_SEARCH_TOKENS 8
 
-// One filter term: LIKE '%pattern%' over one queryable column (col), or
-// over every displayed column when col == NULL. The per-column filter
-// row submits ?q_<col>=<text> -- one term per filled box, ANDed; the
-// legacy ?q + ?qcol pair is a single term whose col is NULL when the
-// scope is empty or unknown (all-columns fallback).
+// One filter term: LIKE '%token%' over one queryable column (col), or
+// over every displayed column when col == NULL. The box value is split
+// on spaces: every token must match (AND across tokens) while any cell
+// of the column may match it (OR across cells) - so "first last" finds
+// the stack row whichever order the parts are typed in. The per-column
+// filter row submits ?q_<col>=<text> -- one term per filled box, ANDed;
+// the legacy ?q + ?qcol pair is a single term whose col is NULL when
+// the scope is empty or unknown (all-columns fallback).
 typedef struct {
     const MD_Column *col;      /* scoped column; NULL = all columns */
-    String_View      pattern;  /* "%text%" -- bound to this term's LIKEs */
+    String_View      tokens[MD_MAX_SEARCH_TOKENS]; /* "%text%" each */
+    size_t           ntokens;  /* >= 1 while the term exists */
     int              nbinds;   /* out: LIKE placeholders this term owns */
 } MD_SearchTerm;
 
@@ -359,21 +420,29 @@ typedef struct {
     size_t        term_count;
 } MD_Search;
 
-// Append one ANDed term; the pattern is capped at 100 chars and never
-// stored empty, so term_count > 0 is the "searching" test.
+// Append one ANDed term; the value is capped at 100 chars and split on
+// spaces into at most MD_MAX_SEARCH_TOKENS "%text%" patterns (empty
+// pieces collapse, an all-space value adds no term), so term_count > 0
+// is the "searching" test.
 static void md_search_add(MD_Search *search, const MD_Column *col,
                           String_View pattern) {
     if (!pattern.count || search->term_count >= MD_MAX_SEARCH_TERMS) return;
     if (pattern.count > 100) pattern.count = 100;
-    String_Builder pat = {0};
-    sb_append_cstr(&pat, "%");
-    sb_append_buf(&pat, pattern.data, pattern.count);
-    sb_append_cstr(&pat, "%");
-    sb_append_null(&pat);
-    MD_SearchTerm *t = &search->terms[search->term_count++];
-    t->col = col;
-    t->pattern = sv_from_cstr(temp_strdup(pat.items));
-    sb_free(pat);
+    MD_SearchTerm t = { .col = col };
+    String_View rest = pattern;
+    while (rest.count > 0 && t.ntokens < MD_MAX_SEARCH_TOKENS) {
+        String_View tok = sv_chop_by_delim(&rest, ' ');
+        if (tok.count == 0) continue;
+        String_Builder pat = {0};
+        sb_append_cstr(&pat, "%");
+        sb_append_buf(&pat, tok.data, tok.count);
+        sb_append_cstr(&pat, "%");
+        sb_append_null(&pat);
+        t.tokens[t.ntokens++] = sv_from_cstr(temp_strdup(pat.items));
+        sb_free(pat);
+    }
+    if (t.ntokens == 0) return;
+    search->terms[search->term_count++] = t;
 }
 
 static bool md_search_on(const MD_Search *s) {
@@ -401,7 +470,7 @@ static void md_append_col_search(String_Builder *cond, db_t *db,
                                  const char *table_name,
                                  const MD_Column *col, int *n)
 {
-    if (col->type == COL_TYPE_FK_SELECT && col->fk_table != NULL && col->fk_label != NULL) {
+    if (md_id_backed(col) && col->fk_label != NULL) {
         sb_append_cstr(cond, "(");
         md_append_like_cast(cond, db, col->name);
         sb_append_cstr(cond, md_ph(db, n));
@@ -422,12 +491,14 @@ static void md_append_col_search(String_Builder *cond, db_t *db,
 }
 
 // The whole WHERE for one master view: the soft-delete scope plus the
-// table search -- each search term ANDed as its own parenthesized group
-// (LIKE over the scoped column, or every displayed one, and for FK
-// columns over the label the cell shows: a correlated EXISTS, so "PAID"
-// finds its orders without a join). Returns "" or " WHERE ..."; nbinds
-// counts LIKE placeholders: bind each term's pattern to the slots it
-// owns right after sql_prepare (md_bind_search).
+// table search -- each search term emits one parenthesized cell group
+// PER TOKEN (LIKE over the scoped column, or every displayed one, and
+// for FK columns over the label the cell shows: a correlated EXISTS,
+// so "PAID" finds its orders without a join), the token groups ANDed
+// (every word must match some cell of the term's column). Returns ""
+// or " WHERE ..."; nbinds counts LIKE placeholders: bind each token's
+// pattern to the slots it owns right after sql_prepare
+// (md_bind_search).
 static const char *md_where(db_t *db, const MD_MasterConfig *config,
                             bool show_deleted, MD_Search *search,
                             int *nbinds)
@@ -452,6 +523,7 @@ static const char *md_where(db_t *db, const MD_MasterConfig *config,
             const MD_SearchTerm *term = &search->terms[t];
             String_Builder cond = {0};
             int term_start = total_binds;
+            int ph = 0;
 
             for (size_t ci = 0; ci < config->column_count; ++ci) {
                 const MD_Column *col = &config->columns[ci];
@@ -463,20 +535,26 @@ static const char *md_where(db_t *db, const MD_MasterConfig *config,
                     sb_append_cstr(&cond, "(");
                     for (size_t p = 0; p < col->subcol_count; ++p) {
                         if (p > 0) sb_append_cstr(&cond, " OR ");
-                        md_append_col_search(&cond, db, config->table, &col->subcols[p], &total_binds);
+                        md_append_col_search(&cond, db, config->table, &col->subcols[p], &ph);
                     }
                     sb_append_cstr(&cond, ")");
                 } else {
-                    md_append_col_search(&cond, db, config->table, col, &total_binds);
+                    md_append_col_search(&cond, db, config->table, col, &ph);
                 }
             }
 
             if (cond.count > 0) {
-                sb_append_cstr(&sb, joiner);
-                sb_append_cstr(&sb, "(");
-                sb_append_buf(&sb, cond.items, cond.count);
-                sb_append_cstr(&sb, ")");
-                joiner = " AND ";
+                // The cell group is identical for every token of this
+                // term; emit it once per token, ANDed. One token emits
+                // exactly the old single-group bytes.
+                for (size_t k = 0; k < term->ntokens; ++k) {
+                    sb_append_cstr(&sb, joiner);
+                    sb_append_cstr(&sb, "(");
+                    sb_append_buf(&sb, cond.items, cond.count);
+                    sb_append_cstr(&sb, ")");
+                    joiner = " AND ";
+                }
+                total_binds += ph * (int)term->ntokens;
             }
 
             search->terms[t].nbinds = total_binds - term_start;
@@ -494,18 +572,23 @@ static const char *md_where(db_t *db, const MD_MasterConfig *config,
     return out;
 }
 
-// Bind each term's pattern to the LIKE slots it owns (md_where emits the
-// terms' placeholders in order, so the slots run consecutively per term).
-// A NULL search (the trash-badge count ignores the filter) has no slots.
+// Bind each token's pattern to the LIKE slots it owns (md_where emits
+// one group per token with the same placeholder count, so the slots run
+// token-outer in order). A NULL search (the trash-badge count ignores
+// the filter) has no slots.
 static bool md_bind_search(sql_stmt *stmt, const MD_Search *search,
                            int nbinds) {
     if (!search) return true;
     int slot = 1;
     for (size_t t = 0; t < search->term_count && slot <= nbinds; ++t) {
-        for (int b = 0; b < search->terms[t].nbinds && slot <= nbinds;
-             ++b, ++slot) {
-            if (!sql_bind(stmt, slot, SQL_SV(search->terms[t].pattern)))
-                return false;
+        const MD_SearchTerm *term = &search->terms[t];
+        if (term->ntokens == 0 || term->nbinds <= 0) continue;
+        int per = term->nbinds / (int)term->ntokens;
+        for (size_t k = 0; k < term->ntokens && slot <= nbinds; ++k) {
+            for (int b = 0; b < per && slot <= nbinds; ++b, ++slot) {
+                if (!sql_bind(stmt, slot, SQL_SV(term->tokens[k])))
+                    return false;
+            }
         }
     }
     return true;
@@ -750,11 +833,14 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
         && md_form_cols_load(db, config, lazy_cascade, &form_cols);
     if (ok) {
         for (size_t i = 0; i < config->column_count; ++i) {
-            md_col_load_options(db, &config->columns[i]);
+            md_col_load_options(db, &config->columns[i],
+                                config->table, config->soft_delete);
         }
         for (size_t ti = 0; ti < config->children_count; ++ti) {
             for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) {
-                md_col_load_options(db, &config->children[ti].columns[cci]);
+                md_col_load_options(db, &config->children[ti].columns[cci],
+                                    config->children[ti].table,
+                                    config->children[ti].soft_delete);
             }
         }
         for (size_t ri = 0; ri < rows->count; ++ri) {
@@ -767,7 +853,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
                         size_t slot = md_col_slot(config->columns, ci) + p;
                         if (scol->type == COL_TYPE_DATE) {
                             r->disp[slot] = (char *)md_date_human(r->values[slot]);
-                        } else if (scol->type == COL_TYPE_FK_SELECT) {
+                        } else if (md_id_backed(scol)) {
                             r->disp[slot] = (char *)md_fk_display(db, scol, r->values[slot]);
                         }
                     }
@@ -792,7 +878,7 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
                                 size_t slot = md_col_slot(ct->columns, cci) + p;
                                 if (scol->type == COL_TYPE_DATE) {
                                     cr->items[cj].disp[slot] = (char *)md_date_human(cr->items[cj].values[slot]);
-                                } else if (scol->type == COL_TYPE_FK_SELECT) {
+                                } else if (md_id_backed(scol)) {
                                     cr->items[cj].disp[slot] = (char *)md_fk_display(db, scol, cr->items[cj].values[slot]);
                                 }
                             }
