@@ -59,6 +59,7 @@ void render_users_page(Serve_Context *sc,
     if (!fragment) {
         render_page_header(sb, page_title, current_path);
     }
+#include "src/i18n/i18n.h"
 #include "build/h_to_html/user.h"
     if (!fragment) {
         render_page_footer(sb);

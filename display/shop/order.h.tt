@@ -3,26 +3,26 @@
     <div class="font-semibold">
       <c> ESCAPED(tr("order.thanks", "អរគុណសម្រាប់ការបញ្ជាទិញ!")); </c>
     </div>
-    <div class="text-xs text-onbase/80">
+    <div class="text-sm text-onbase/80">
       <c> ESCAPED(tr("order.number", "លេខបញ្ជាទិញ")); </c>: 
       <c> ESCAPED(number); </c> · 
       <c> ESCAPED(created); </c>
     </div>
   </div>
   <div class="px-3 py-2 border-b border-surface0 flex items-center gap-2">
-    <span class="bg-yellow text-onbase border border-yellow px-2 py-0.5 text-xs">
+    <span class="bg-yellow text-onbase border border-yellow px-2 py-0.5 text-sm">
       <c> ESCAPED(status_label(status)); </c>
     </span>
-    <span class="text-xs text-overlay0">
+    <span class="text-sm text-overlay0">
       <c> ESCAPED(tr("order.status_now", "ស្ថានភាពបច្ចុប្បន្ន")); </c>
     </span>
   </div>
   <c> for (size_t i = 0; i < lines.count; ++i) {</c>
-    <div class="px-3 py-2 border-b border-surface0 flex items-center gap-2 text-sm">
+    <div class="px-3 py-2 border-b border-surface0 flex items-center gap-2 text-base">
       <div class="flex-1 min-w-0 text-text truncate">
         <c> ESCAPED(lines.items[i].name); </c>
       </div>
-      <div class="text-xs text-overlay0">× 
+      <div class="text-sm text-overlay0">× 
         <c> STR(lines.items[i].qty); </c>
       </div>
       <div class="text-text">
@@ -30,7 +30,7 @@
       </div>
     </div>
     <c> } </c>
-    <div class="px-3 py-2 flex items-center justify-between bg-surface0/50 border-y border-surface0 text-sm">
+    <div class="px-3 py-2 flex items-center justify-between bg-surface0/50 border-y border-surface0 text-base">
       <span class="font-semibold text-text">
         <c> ESCAPED(tr("checkout.total_due", "សរុបត្រូវបង់")); </c>
       </span>
@@ -38,7 +38,7 @@
         <c> STR(shop_money(total)); </c>
       </span>
     </div>
-    <div class="px-3 py-2 text-xs text-subtext0 border-b border-surface0">
+    <div class="px-3 py-2 text-sm text-subtext0 border-b border-surface0">
       <c> ESCAPED(tr("checkout.label_name", "ឈ្មោះ")); </c>: 
       <c> ESCAPED(rname); </c> · 
       <c> ESCAPED(tr("checkout.label_phone", "លេខទូរស័ព្ទ")); </c>: 
@@ -47,11 +47,11 @@
       <c> ESCAPED(tr("checkout.label_address", "អាសយដ្ឋាន")); </c>: 
       <c> ESCAPED(raddr); </c>
     </div>
-    <div class="px-3 py-2 text-xs text-subtext0">
+    <div class="px-3 py-2 text-sm text-subtext0">
       <c> ESCAPED(tr("order.contact_note", "យើងនឹងទាក់ទងលោកអ្នកដើម្បីបញ្ជាក់ការបញ្ជាទិញ។")); </c>
     </div>
     <div class="px-3 py-2 border-t border-surface0">
-      <a href="/" class="text-xs text-blue hover:underline">
+      <a href="/" class="text-sm text-blue hover:underline">
         <c> ESCAPED(tr("shop.back", "« ត្រឡប់ទៅហាង")); </c>
       </a>
     </div>

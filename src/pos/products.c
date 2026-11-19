@@ -6,11 +6,12 @@
 #include "src/core/webc_template.h"
 #include "src/db/db.h"
 #include "src/pos/pos_util.h"
+#include "src/pos/product_images.h"
 #include "src/http/utils.h"
 
 // =========================================================================
 // /pos/products: name + codes cell + prices cell + category/type FKs.
-// Two child tabs: product_variants and inventory_stocks.
+// Three child tabs: product_variants, inventory_stocks, product_images.
 // =========================================================================
 
 MD_Column md_products_columns[] = {
@@ -69,6 +70,19 @@ static MD_Column md_pos_stock_child_columns[] = {
       .nullable = false },
 };
 
+// Pictures child tab: fixed kind enum (shared with the server-side
+// validator in product_images.c) + caption + upload + display order.
+static MD_Column md_pos_picture_columns[] = {
+    { .name = "kind", .label = "Type", .type = COL_TYPE_TEXT,
+      .nullable = false, .choices = pim_kind_choices },
+    { .name = "name", .label = "Name", .type = COL_TYPE_TEXT,
+      .nullable = true },
+    { .name = "image", .label = "Picture", .type = COL_TYPE_IMG,
+      .nullable = false },
+    { .name = "sort_order", .label = "Order", .type = COL_TYPE_NUM,
+      .nullable = false },
+};
+
 void serve_pos_products(Serve_Context *sc) {
     MD_ChildTab children[] = {
         {
@@ -88,6 +102,15 @@ void serve_pos_products(Serve_Context *sc) {
             .crud_path    = "/pos/stocks",
             .columns      = md_pos_stock_child_columns,
             .column_count = ARRAY_LEN(md_pos_stock_child_columns),
+            .soft_delete  = 1,
+        }, {
+            .table        = "product_images",
+            .title        = "Pictures",
+            .fk_column    = "product_id",
+            .id_column    = "id",
+            .crud_path    = "/pos/product_images",
+            .columns      = md_pos_picture_columns,
+            .column_count = ARRAY_LEN(md_pos_picture_columns),
             .soft_delete  = 1,
         },
     };

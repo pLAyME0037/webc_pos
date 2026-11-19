@@ -8,33 +8,33 @@
         <div class="bg-text text-onbase px-3 py-2 flex items-center justify-between">
             <div>
                 <div class="text-lg font-semibold"><c> ESCAPED(tr("auth.acct_title", "គណនី")); </c></div>
-                <div class="text-sm text-onbase/70"><c> ESCAPED(tr("auth.acct_sub", "ចូលហើយក្នុងកម្មវិធីនេះ")); </c></div>
+                <div class="text-base text-onbase/70"><c> ESCAPED(tr("auth.acct_sub", "ចូលហើយក្នុងកម្មវិធីនេះ")); </c></div>
             </div>
-            <a href="/" class="text-sm text-onbase/80 hover:underline">Store</a>
+            <a href="/" class="text-base text-onbase/80 hover:underline">Store</a>
         </div>
         <ul class="divide-y divide-surface0">
 <c> for (size_t i = 0; i < naccts; ++i) { </c>
 <c> const Acct_Row *a = &accts[i]; </c>
             <li class="flex items-center gap-3 px-3 py-2.5">
-                <span class="h-9 w-9 rounded-full bg-surface1 text-subtext0 inline-flex items-center justify-center text-sm font-semibold shrink-0"><c> ESCAPED(a->name[0] ? temp_sprintf("%c", a->name[0]) : "?"); </c></span>
+                <span class="h-9 w-9 rounded-full bg-surface1 text-subtext0 inline-flex items-center justify-center text-base font-semibold shrink-0"><c> ESCAPED(a->name[0] ? temp_sprintf("%c", a->name[0]) : "?"); </c></span>
                 <div class="min-w-0 flex-1">
-                    <div class="text-sm text-text truncate"><c> ESCAPED(a->name); </c></div>
-                    <div class="text-sm text-subtext0 truncate"><c> ESCAPED(a->mail); </c><c> if (a->type[0]) { </c> &#183; <c> ESCAPED(a->type); </c><c> } </c></div>
+                    <div class="text-base text-text truncate"><c> ESCAPED(a->name); </c></div>
+                    <div class="text-base text-subtext0 truncate"><c> ESCAPED(a->mail); </c><c> if (a->type[0]) { </c> &#183; <c> ESCAPED(a->type); </c><c> } </c></div>
                 </div>
 <c> if (a->is_me) { </c>
-                <span class="text-sm text-blue border border-blue/40 px-2 py-1 whitespace-nowrap"><c> ESCAPED(tr("auth.acct_current", "ឥឡូវនេះ")); </c></span>
+                <span class="text-base text-blue border border-blue/40 px-2 py-1 whitespace-nowrap"><c> ESCAPED(tr("auth.acct_current", "ឥឡូវនេះ")); </c></span>
 <c> } else { </c>
                 <form method="POST" action="/switch" class="flex items-center gap-1.5">
                     <input type="hidden" name="sid" value="<c> ESCAPED(a->sid); </c>">
                     <input type="hidden" name="next" value="/accounts">
-                    <button name="op" value="switch" class="text-sm bg-blue text-onbase px-2 py-1"><c> ESCAPED(tr("auth.acct_switch", "ប្តូរ")); </c></button>
-                    <button name="op" value="remove" class="text-sm text-red border border-surface0 px-2 py-1"><c> ESCAPED(tr("auth.acct_remove", "លុប")); </c></button>
+                    <button name="op" value="switch" class="text-base bg-blue text-onbase px-2 py-1"><c> ESCAPED(tr("auth.acct_switch", "ប្តូរ")); </c></button>
+                    <button name="op" value="remove" class="text-base text-red border border-surface0 px-2 py-1"><c> ESCAPED(tr("auth.acct_remove", "លុប")); </c></button>
                 </form>
 <c> } </c>
             </li>
 <c> } </c>
         </ul>
-        <div class="p-3 flex items-center justify-between text-sm">
+        <div class="p-3 flex items-center justify-between text-base">
             <a href="/login?next=/accounts" class="text-blue hover:underline"><c> ESCAPED(tr("auth.acct_add", "បន្ថែមគណនី")); </c></a>
             <a href="/logout" class="text-red hover:underline"><c> ESCAPED(tr("shop.logout_link", "ចេញ")); </c></a>
         </div>

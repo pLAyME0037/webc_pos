@@ -53,13 +53,8 @@ static void render_checkout(Serve_Context *sc, const Shop_Cart *cart,
 
     // Summary + form: display/shop/checkout.h.tt (design rule: state-driven
     // HTML belongs to a template).
-#define OUT(buf, size) sb_append_buf(&content, buf, size);
-#define STR(x) sb_append_cstr(&content, (x) ? (x) : "");
-#define ESCAPED(x) sb_append_html_escaped(&content, (x));
+String_Builder *sb = &content;
 #include "build/h_to_html/shop/checkout.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 
     shop_chrome_end(&content);
     shop_render(sc, 200, tr("checkout.page_title", "ការបង់ប្រាក់"), &content);
@@ -641,13 +636,8 @@ void serve_shop_order(Serve_Context *sc) {
 
     // Confirmation panel: display/shop/order.h.tt (design rule: state-driven
     // HTML belongs to a template).
-#define OUT(buf, size) sb_append_buf(&content, buf, size);
-#define STR(x) sb_append_cstr(&content, (x) ? (x) : "");
-#define ESCAPED(x) sb_append_html_escaped(&content, (x));
+String_Builder *sb = &content;
 #include "build/h_to_html/shop/order.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 
     shop_chrome_end(&content);
     shop_render(sc, 200, number, &content);

@@ -5,6 +5,7 @@
 #include "src/db/db.h"
 #include "src/helper/cells.h"
 #include "src/layout/header.h"
+#include "src/i18n/i18n.h"
 #include "src/layout/footer.h"
 #include "src/http/utils.h"
 #include "src/layout/paging.h"
@@ -735,13 +736,7 @@ static void md_query_row(String_Builder *sb, const MD_MasterConfig *config,
                          const MD_FormCols *form_cols, const char *md_path,
                          String_View query, const char *q_text,
                          const char *qcol_name, bool search_active) {
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(s) sb_append_cstr(sb, s);
-#define ESCAPED(s) sb_append_html_escaped(sb, s ? s : "");
 #include "build/h_to_html/component/md_child_query_row.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 }
 
 void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
@@ -928,21 +923,9 @@ void serve_master_child(Serve_Context *sc, const MD_MasterConfig *config) {
     }
 
     if (!fragment) {
-        render_page_header(sb, config->title, md_path);
+        render_page_header(sb, tr(config->title, config->title), md_path);
     }
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define INT(v) sb_append_cstr(sb, temp_sprintf("%zu", v));
-#define LLINT(v) sb_append_cstr(sb, temp_sprintf("%lld", v));
-#define STR(s) sb_append_cstr(sb, s);
-#define ESCAPED(s) sb_append_html_escaped(sb, (s));
-#define PAGE_TITLE(s) sb_append_cstr(sb, s);
 #include "build/h_to_html/component/master_child.h"
-#undef OUT
-#undef INT
-#undef LLINT
-#undef STR
-#undef ESCAPED
-#undef PAGE_TITLE
     if (!fragment) {
         render_page_footer(sb);
     }

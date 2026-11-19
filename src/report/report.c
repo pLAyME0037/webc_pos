@@ -10,6 +10,7 @@
 #include "src/layout/header.h"
 #include "src/db/db.h"
 #include "src/helper/cells.h"
+#include "src/i18n/i18n.h"
 
 // =========================================================================
 // Registry: MVP reports (Phase 8). SQL is sqlite-canonical; the MVP
@@ -300,13 +301,8 @@ static bool report_logo_data(String_Builder *b64, const char **mime) {
 // (design rule: state-driven HTML belongs to a template); this host feeds it
 // the logo bytes, the shop name and the report title.
 static void report_append_letterhead(String_Builder *out, const Report_Def *rep) {
-#define OUT(buf, size) sb_append_buf(out, buf, size);
-#define STR(x) sb_append_cstr(out, (x) ? (x) : "");
-#define ESCAPED(x) sb_append_html_escaped(out, (x) ? (x) : "");
+String_Builder *sb = out;
 #include "build/h_to_html/report/letterhead.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 }
 
 bool report_build_html(const Report_Def *rep, String_Builder *out,
@@ -392,16 +388,9 @@ bool report_build_html(const Report_Def *rep, String_Builder *out,
     // data rows and the bold totals row. Zebra/grid/dark-header are
     // presentational bgcolor attributes because CSS backgrounds + borders do
     // not survive the html->FODT import.
-#define OUT(buf, size) sb_append_buf(out, buf, size);
-#define STR(x) sb_append_cstr(out, (x) ? (x) : "");
-#define INT(x) sb_appendf(out, "%d", (x));
-#define ESCAPED(x) sb_append_html_escaped(out, (x) ? (x) : "");
+String_Builder *sb = out;
 #define CELL(ri, ci) (cells.items[(size_t)(ri) * (size_t)ncols + (size_t)(ci)])
 #include "build/h_to_html/report/doc.h"
-#undef OUT
-#undef STR
-#undef INT
-#undef ESCAPED
 #undef CELL
     // report_convert() runs strlen() on this buffer, and a String_Builder
     // is NOT NUL-terminated by default -- without this the read runs past
@@ -766,13 +755,7 @@ void serve_reports_index(Serve_Context *sc) {
     // The list markup lives in display/report/index.h.tt (design rule:
     // state-driven HTML belongs to a template); this host feeds it the
     // registry of reports.
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(x) sb_append_cstr(sb, (x) ? (x) : "");
-#define ESCAPED(x) sb_append_html_escaped(sb, (x) ? (x) : "");
 #include "build/h_to_html/report/index.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 
     render_page_footer(sb);
     http_render_response(sc, 200, "text/html", sb_to_sv(*sb));

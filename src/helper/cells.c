@@ -78,20 +78,7 @@ static void cell_render_stack(String_Builder *sb, const MD_Column *col,
         "text-gray-400 dark:text-gray-500",
     };
     const size_t n = sizeof(rank) / sizeof(rank[0]);
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(s) sb_append_cstr(sb, s);
-#define ESCAPED(s) \
-    do { \
-        if ((s) != NULL) { \
-            sb_append_html_escaped(sb, (s)); \
-        } else { \
-            sb_append_html_escaped(sb, ""); \
-        } \
-    } while (0)
 #include "build/h_to_html/component/cell_stack.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 }
 
 static const char *status_accent(const char *status) {
@@ -169,20 +156,7 @@ static void cell_render_avatar(String_Builder *sb, const MD_Column *col,
         }
         memcpy(initial_buf, name, copy_len);
     }
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(s) sb_append_cstr(sb, s);
-#define ESCAPED(s) \
-    do { \
-        if ((s) != NULL) { \
-            sb_append_html_escaped(sb, (s)); \
-        } else { \
-            sb_append_html_escaped(sb, ""); \
-        } \
-    } while (0)
 #include "build/h_to_html/component/cell_avatar.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 }
 
 static void cell_render_activity(String_Builder *sb, const MD_Column *col,
@@ -207,11 +181,7 @@ static void cell_render_activity(String_Builder *sb, const MD_Column *col,
     } else if (deleted != NULL && deleted[0] != '\0') {
         wrote = true;
     }
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(s) sb_append_cstr(sb, s);
 #include "build/h_to_html/component/cell_activity.h"
-#undef OUT
-#undef STR
 }
 
 const char *md_cell_render(const MD_Column *col, char *const *values, size_t slot) {

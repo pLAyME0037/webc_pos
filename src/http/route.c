@@ -12,6 +12,7 @@
 #include "src/pos/geo.h"
 #include "src/pos/products.h"
 #include "src/pos/variants.h"
+#include "src/pos/product_images.h"
 #include "src/pos/stocks.h"
 #include "src/pos/ledger.h"
 #include "src/pos/orders.h"
@@ -178,6 +179,8 @@ void route_initialize(void) {
     route_new(&routes, "/",            NULL, "GET",  ROUTE_EXACT, serve_shop_index);
     route_new(&routes, "/dashboard",   NULL, "GET",  ROUTE_EXACT, serve_dashboard);
     route_new(&routes, "/product",     "",   "GET",  ROUTE_ID_ACTION, serve_shop_product);
+    route_new(&routes, "/product",     "/review", "POST", ROUTE_ID_ACTION, serve_shop_product_review);
+    route_new(&routes, "/review",      "/like",   "POST", ROUTE_ID_ACTION, serve_shop_review_like);
     route_new(&routes, "/cart",        NULL, "GET",  ROUTE_EXACT, serve_shop_cart);
     route_new(&routes, "/cart/add",    NULL, "POST", ROUTE_EXACT, serve_shop_cart_add);
     route_new(&routes, "/cart/buynow", NULL, "POST", ROUTE_EXACT, serve_shop_cart_buynow);
@@ -271,6 +274,11 @@ void route_initialize(void) {
     route_new(&routes, "/pos/variants", "/update",  "POST", ROUTE_ID_ACTION, serve_pos_variants_update);
     route_new(&routes, "/pos/variants", "/delete",  "POST", ROUTE_ID_ACTION, serve_pos_variants_soft_delete);
     route_new(&routes, "/pos/variants", "/restore", "POST", ROUTE_ID_ACTION, serve_pos_variants_restore);
+
+    route_new(&routes, "/pos/product_images/create", NULL, "POST", ROUTE_EXACT,    serve_pos_product_images_create);
+    route_new(&routes, "/pos/product_images", "/update",  "POST", ROUTE_ID_ACTION, serve_pos_product_images_update);
+    route_new(&routes, "/pos/product_images", "/delete",  "POST", ROUTE_ID_ACTION, serve_pos_product_images_soft_delete);
+    route_new(&routes, "/pos/product_images", "/restore", "POST", ROUTE_ID_ACTION, serve_pos_product_images_restore);
 
     route_new(&routes, "/pos/stocks", NULL,       "GET",  ROUTE_EXACT,     serve_pos_stocks);
     route_new(&routes, "/pos/stocks/create", NULL, "POST", ROUTE_EXACT,    serve_pos_stocks_create);

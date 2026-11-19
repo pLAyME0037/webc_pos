@@ -1,51 +1,349 @@
-<div class="bg-mantle border border-surface0 flex flex-col md:flex-row">
-  <div class="bg-blue/10 md:w-64 h-40 flex items-center justify-center text-blue font-bold text-5xl">
+<!-- ==========================================================================
+     /product/<id> - storefront readability layout, four sections:
+       1. product-pictures - hero LEFT: main image + thumbnail grid (kind +
+          caption), click-to-zoom <dialog> lightbox (js/ProductGallery.js)
+       2. product-detail   - hero MIDDLE: name, star line, price + sold,
+          stock, qty + transaction forms
+       3. user-stats       - hero RIGHT: big average, counts, 5-star bars
+          (NOT a product-* id on purpose: the section-id pin stays at 4)
+       4. product-reviews  - full-width thread, top 6 root comments (each
+          with all its replies), bigger reading text
+       5. product-related  - stacked full-width: related + best-seller picks,
+          3 per row with tall pictures (older-user friendly)
+     Data comes from serve_shop_product (bounded stack arrays).
+     ========================================================================== -->
+
+<div class="grid md:grid-cols-3 gap-3 items-start">
+<c> if (pic_count > 0) { </c>
+<section id="product-pictures" class="bg-mantle border border-surface0 p-3" data-gallery>
+  <div class="bg-blue/10 border border-surface0 flex items-center justify-center">
+    <img data-gallery-main
+         src="<c> ESCAPED(pics[0].image); </c>"
+         alt="<c> ESCAPED(pics[0].name); </c>"
+         class="w-full h-72 md:h-[26rem] object-contain cursor-zoom-in">
+  </div>
+  <div class="grid grid-cols-4 gap-2 mt-2">
+    <c> for (size_t pi = 0; pi < pic_count; ++pi) { </c>
+    <button type="button"
+            data-gallery-thumb
+            data-full="<c> ESCAPED(pics[pi].image); </c>"
+            class="bg-blue/10 border border-surface0 text-left flex flex-col hover:border-blue"
+            aria-label="<c> ESCAPED(pics[pi].name); </c>">
+      <img src="<c> ESCAPED(pics[pi].image); </c>"
+           alt="<c> ESCAPED(pics[pi].name); </c>"
+           class="w-full h-20 object-cover pointer-events-none">
+      <span class="px-1.5 py-1 text-xs flex items-center gap-1 min-w-0">
+        <span class="px-1 py-px border border-blue text-blue shrink-0">
+          <c> ESCAPED(pics[pi].kind); </c>
+        </span>
+        <span class="truncate"><c> ESCAPED(pics[pi].name); </c></span>
+      </span>
+    </button>
+    <c> } </c>
+  </div>
+  <dialog id="gallery-lightbox"
+          class="bg-mantle border border-surface0 p-2 w-[92vw] max-w-3xl backdrop:bg-black/70">
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <button type="button" data-gallery-prev
+              class="border border-surface0 px-3 py-1.5 text-base hover:border-blue"
+              aria-label="previous">‹</button>
+      <span data-gallery-caption class="text-sm text-overlay0 truncate flex-1"></span>
+      <button type="button" data-gallery-next
+              class="border border-surface0 px-3 py-1.5 text-base hover:border-blue"
+              aria-label="next">›</button>
+      <button type="button" data-gallery-close
+              class="border border-surface0 px-3 py-1.5 text-base hover:border-red"
+              aria-label="close">×</button>
+    </div>
+    <img data-gallery-zoom src="<c> ESCAPED(pics[0].image); </c>" alt=""
+         class="w-full max-h-[75vh] object-contain bg-blue/10">
+  </dialog>
+</section>
+<c> } </c>
+
+<section id="product-detail" class="bg-mantle border border-surface0 px-4 py-4 flex flex-col gap-3">
+  <c> if (pic_count == 0) { </c>
+  <div class="bg-blue/10 h-40 flex items-center justify-center text-blue font-bold text-5xl">
     <c> sb_append_first_glyph(&content, name); </c>
   </div>
-  <div class="flex-1 px-3 py-3 flex flex-col gap-2">
-    <div class="text-xs text-overlay0">SKU: 
-      <c> ESCAPED(sku); </c> · 
-      <c> ESCAPED(cat); </c>
-    </div>
-    <h1 class="text-xl font-semibold text-text">
-      <c> ESCAPED(name); </c>
-    </h1>
-    <div class="text-2xl font-bold text-blue">
+  <c> } </c>
+  <div class="text-sm text-overlay0">SKU:
+    <c> ESCAPED(sku); </c> ·
+    <c> ESCAPED(cat); </c>
+  </div>
+  <h1 class="text-2xl font-semibold leading-snug">
+    <c> ESCAPED(name); </c>
+  </h1>
+  <c> if (rating_count > 0) { </c>
+  <div class="text-sm text-overlay0 flex items-center gap-2 flex-wrap">
+    <span class="text-blue font-semibold">★ <c> STR(avg_s); </c></span>
+    <span>·</span>
+    <span><c> sb_appendf(&content, "%ld", rating_count); </c>
+      <c> ESCAPED(tr("shop.ratings", "ចំណាត់ថ្នាក់")); </c></span>
+    <span>·</span>
+    <span><c> sb_appendf(&content, "%ld", comment_count); </c>
+      <c> ESCAPED(tr("shop.comments", "មតិ")); </c></span>
+  </div>
+  <c> } </c>
+  <div class="flex items-baseline gap-3 flex-wrap">
+    <div class="text-3xl font-bold text-blue">
       <c> STR(shop_money(price)); </c>
     </div>
-    <div class="text-sm <c>if (out) {</c> text-red">
-      <c> ESCAPED(tr("shop.out_of_stock", "អស់ពីរាក់")); </c>
-      <c> } else {</c>text-green">
-      <c> ESCAPED(tr("shop.in_stock", "នៅសល់: ")); </c>
-      <c> sb_appendf(&content, "%d", stock_i); </c>
-      <c> } </c>
-    </div>
-    <c> if (out) {</c>
-    <div class="bg-red/10 border-l-2 border-red text-red px-2 py-1.5 text-xs">
-      <c> ESCAPED(tr("shop.out_notice", "ផលិតផលនេះអស់ពីរាក់")); </c>
-    </div>
-    <c> } else {</c>
-    <div class="flex items-center gap-2">
-      <form method="POST" action="/cart/add" class="flex items-center gap-2">
-        <input type="hidden" name="product_id" value="<c> ESCAPED(id_s); </c>">
-        <input type="hidden" name="redirect" value="/product/<c> ESCAPED(id_s); </c>">
-        <input type="number" name="qty" value="1"
-               min="1" max="<c> sb_appendf(&content, "%d", stock_i); </c>"
-               class="border border-surface0 bg-mantle text-text px-2 py-1.5 text-sm w-20">
-        <button class="bg-blue text-onbase hover:brightness-90 px-2 py-1.5 text-sm">
-          <c> ESCAPED(tr("shop.add_to_cart", "ដាក់ក្នុងរទេះ")); </c>
-        </button>
-      </form>
-      <form method="POST" action="/cart/buynow" class="flex items-center gap-2">
-        <input type="hidden" name="product_id" value="<c> ESCAPED(id_s); </c>">
-        <button class="bg-mauve text-onbase hover:brightness-90 px-2 py-1.5 text-sm">
-          <c> ESCAPED(tr("shop.buy_now", "ទិញឥឡូវនេះ")); </c>
-        </button>
-      </form>
+    <span class="text-sm text-overlay0">
+      <c> sb_appendf(&content, "%d", sold_i); </c>
+      <c> ESCAPED(tr("shop.sold_count", "បានលក់")); </c>
+    </span>
+  </div>
+  <div class="text-base <c>if (out) {</c> text-red">
+    <c> ESCAPED(tr("shop.out_of_stock", "អស់ពីរាក់")); </c>
+    <c> } else {</c>text-green">
+    <c> ESCAPED(tr("shop.in_stock", "នៅសល់: ")); </c>
+    <c> sb_appendf(&content, "%d", stock_i); </c>
+    <c> } </c>
+  </div>
+  <c> if (out) {</c>
+  <div class="bg-red/10 border-l-2 border-red text-red px-3 py-2 text-sm">
+    <c> ESCAPED(tr("shop.out_notice", "ផលិតផលនេះអស់ពីរាក់")); </c>
+  </div>
+  <c> } else {</c>
+  <div class="flex items-center gap-2 flex-wrap">
+    <form method="POST" action="/cart/add" class="flex items-center gap-2">
+      <input type="hidden" name="product_id" value="<c> ESCAPED(id_s); </c>">
+      <input type="hidden" name="redirect" value="/product/<c> ESCAPED(id_s); </c>">
+      <input type="number" name="qty" value="1"
+             min="1" max="<c> sb_appendf(&content, "%d", stock_i); </c>"
+             class="border border-surface0 bg-mantle px-2.5 py-2 text-base w-24">
+      <button class="bg-blue text-onbase hover:brightness-90 px-4 py-2.5 font-semibold">
+        <c> ESCAPED(tr("shop.add_to_cart", "ដាក់ក្នុងរទេះ")); </c>
+      </button>
+    </form>
+    <form method="POST" action="/cart/buynow" class="flex items-center gap-2">
+      <input type="hidden" name="product_id" value="<c> ESCAPED(id_s); </c>">
+      <button class="bg-mauve text-onbase hover:brightness-90 px-5 py-2.5 font-semibold">
+        <c> ESCAPED(tr("shop.buy_now", "ទិញឥឡូវនេះ")); </c>
+      </button>
+    </form>
+  </div>
+  <c> } </c>
+  <a href="/" class="text-sm text-blue hover:underline mt-1">
+    <c> ESCAPED(tr("shop.back_list", "« ត្រឡប់ទៅបញ្ជីផលិតផល")); </c>
+  </a>
+</section>
+
+<section id="user-stats" class="bg-mantle border border-surface0 px-4 py-4 flex flex-col gap-3">
+  <h2 class="text-base font-semibold">
+    <c> ESCAPED(tr("shop.user_stats", "មតិអ្នកប្រើប្រាស់")); </c>
+  </h2>
+  <c> if (rating_count > 0) { </c>
+  <div class="flex items-baseline gap-2">
+    <span class="text-4xl font-bold text-blue">★ <c> STR(avg_s); </c></span>
+    <span class="text-sm text-overlay0">
+      <c> sb_appendf(&content, "%ld", rating_count); </c>
+      <c> ESCAPED(tr("shop.ratings", "ចំណាត់ថ្នាក់")); </c>
+    </span>
+  </div>
+  <div class="flex flex-col gap-1.5">
+    <c> for (int s = 5; s >= 1; --s) { </c>
+    <div class="flex items-center gap-2 text-sm" data-star-bar="<c> sb_appendf(&content, "%d", s); </c>">
+      <span class="w-10 text-right shrink-0"><c> sb_appendf(&content, "%d ★", s); </c></span>
+      <div class="flex-1 h-2.5 bg-surface0 rounded overflow-hidden">
+        <c> int spct = star_count[s] * 100 / (int) rating_count; </c>
+        <div class="h-2.5 bg-blue rounded" style="width: <c> sb_appendf(&content, "%d", spct); </c>%"></div>
+      </div>
+      <span class="w-8 text-right text-overlay0 shrink-0"><c> sb_appendf(&content, "%d", star_count[s]); </c></span>
     </div>
     <c> } </c>
-    <a href="/" class="text-xs text-blue hover:underline mt-1">
-      <c> ESCAPED(tr("shop.back_list", "« ត្រឡប់ទៅបញ្ជីផលិតផល")); </c>
-    </a>
   </div>
+  <c> } </c>
+  <div class="text-sm text-overlay0">
+    <c> sb_appendf(&content, "%ld", comment_count); </c>
+    <c> ESCAPED(tr("shop.comments", "មតិ")); </c> ·
+    <c> sb_appendf(&content, "%d", sold_i); </c>
+    <c> ESCAPED(tr("shop.sold_count", "បានលក់")); </c>
+  </div>
+</section>
 </div>
+
+<section id="product-reviews" class="bg-mantle border border-surface0 px-4 py-4 flex flex-col gap-4">
+  <h2 class="text-base font-semibold">
+    <c> ESCAPED(tr("shop.reviews", "មតិយោបល់")); </c>
+    <span class="text-sm font-normal text-overlay0">(<c> sb_appendf(&content, "%ld", comment_count); </c>)</span>
+  </h2>
+
+  <c> if (viewer != NULL) { </c>
+  <form method="POST" action="/product/<c> ESCAPED(id_s); </c>/review"
+        class="border border-surface0 bg-blue/5 px-3 py-3 flex flex-col gap-2">
+    <textarea name="body" rows="3" maxlength="1000" required
+              placeholder="<c> ESCAPED(tr("shop.write_comment", "សរសេរមតិរបស់អ្នក...")); </c>"
+              class="border border-surface0 bg-mantle text-base px-2.5 py-2"></textarea>
+    <div class="flex items-center gap-2">
+      <select name="rating"
+              class="border border-surface0 bg-mantle text-base px-2 py-2">
+        <option value=""><c> ESCAPED(tr("shop.no_rating", "គ្មានចំណាត់ថ្នាក់")); </c></option>
+        <c> for (int rr = 1; rr <= 5; ++rr) { </c>
+        <option value="<c> sb_appendf(&content, "%d", rr); </c>">
+          <c> sb_appendf(&content, "%d ★", rr); </c>
+        </option>
+        <c> } </c>
+      </select>
+      <button class="bg-blue hover:brightness-90 px-4 py-2 text-base">
+        <c> ESCAPED(tr("shop.post_comment", "ផ្សាយ")); </c>
+      </button>
+    </div>
+  </form>
+  <c> } else { </c>
+  <a href="/login?next=/product/<c> ESCAPED(id_s); </c>"
+     class="self-start border border-surface0 bg-blue/5 px-3 py-2 text-sm text-blue hover:underline">
+    <c> ESCAPED(tr("shop.login_to_comment", "ចូលគណនីដើម្បីផ្សាយមតិ និង LIKE")); </c>
+  </a>
+  <c> } </c>
+
+  <c> if (comment_count == 0) { </c>
+  <div class="text-sm text-overlay0">
+    <c> ESCAPED(tr("shop.no_comments", "មិនទាន់មានមតិនៅឡើយ")); </c>
+  </div>
+  <c> } </c>
+  <c> for (size_t ri = 0; ri < root_count; ++ri) { </c>
+  <c> Shop_Review *rv = &roots[ri]; </c>
+  <article class="border-t border-surface0 pt-3" data-review-id="<c> ESCAPED(rv->id); </c>">
+    <div class="flex items-center gap-3 text-sm text-overlay0 flex-wrap">
+      <span class="font-semibold text-base"><c> ESCAPED(rv->user); </c></span>
+      <span><c> ESCAPED(rv->when); </c></span>
+      <c> if (rv->rating > 0) { </c>
+      <span class="text-blue font-semibold">
+        <c> STR(temp_sprintf("★ %.0f", rv->rating)); </c>
+      </span>
+      <c> } </c>
+    </div>
+    <div class="text-base whitespace-pre-line my-2">
+      <c> ESCAPED(rv->body); </c>
+    </div>
+    <div class="flex items-center gap-4">
+      <form method="POST" action="/review/<c> ESCAPED(rv->id); </c>/like">
+        <button class="text-sm border border-surface0 px-3 py-1
+                       <c> if (rv->liked) { </c>bg-blue text-onbase<c> } else { </c>
+                       text-subtext0 hover:border-blue<c> } </c>">
+          ♥ <c> sb_appendf(&content, "%d", rv->likes); </c>
+        </button>
+      </form>
+      <c> if (viewer != NULL) { </c>
+      <details class="text-sm">
+        <summary class="text-blue cursor-pointer">
+          <c> ESCAPED(tr("shop.reply", "ឆ្លើយតប")); </c>
+        </summary>
+        <form method="POST" action="/product/<c> ESCAPED(id_s); </c>/review"
+              class="flex flex-col gap-1 mt-1 max-w-2xl">
+          <input type="hidden" name="parent_id" value="<c> ESCAPED(rv->id); </c>">
+          <textarea name="body" rows="2" maxlength="1000" required
+                    placeholder="<c> ESCAPED(tr("shop.write_reply", "ឆ្លើយតប...")); </c>"
+                    class="border border-surface0 bg-mantle text-base px-2.5 py-2"></textarea>
+          <button class="self-start bg-blue text-onbase hover:brightness-90 px-3 py-1.5 text-sm">
+            <c> ESCAPED(tr("shop.post_comment", "ផ្សាយ")); </c>
+          </button>
+        </form>
+      </details>
+      <c> } </c>
+    </div>
+
+    <c> for (size_t rj = 0; rj < reply_count; ++rj) { </c>
+    <c> Shop_Review *rp = &replies[rj]; </c>
+    <c> if (strcmp(rp->parent, rv->id) == 0) { </c>
+    <article class="border-l-2 border-surface0 pl-3 mt-3" data-review-id="<c> ESCAPED(rp->id); </c>">
+      <div class="flex items-center gap-3 text-sm text-overlay0 flex-wrap">
+        <span class="font-semibold text-base"><c> ESCAPED(rp->user); </c></span>
+        <span><c> ESCAPED(rp->when); </c></span>
+      </div>
+      <div class="text-base whitespace-pre-line my-1">
+        <c> ESCAPED(rp->body); </c>
+      </div>
+      <form method="POST" action="/review/<c> ESCAPED(rp->id); </c>/like">
+        <button class="text-sm border border-surface0 px-3 py-1
+                       <c> if (rp->liked) { </c>bg-blue text-onbase<c> } else { </c>
+                       text-subtext0 hover:border-blue<c> } </c>">
+          ♥ <c> sb_appendf(&content, "%d", rp->likes); </c>
+        </button>
+      </form>
+    </article>
+    <c> } </c>
+    <c> } </c>
+  </article>
+  <c> } </c>
+</section>
+
+<section id="product-related" class="flex flex-col gap-3">
+  <div class="bg-mantle border border-surface0 px-4 py-4">
+    <h2 class="text-base font-semibold mb-3">
+      <c> ESCAPED(tr("shop.related", "ផលិតផលទាក់ទង")); </c>
+    </h2>
+    <c> if (related_count == 0) { </c>
+    <div class="text-sm text-overlay0">
+      <c> ESCAPED(tr("shop.no_related", "មិនមានផលិតផលទាក់ទង")); </c>
+    </div>
+    <c> } else { </c>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <c> for (size_t ki = 0; ki < related_count; ++ki) { </c>
+      <a href="/product/<c> ESCAPED(related[ki].id); </c>"
+         class="bg-blue/10 border border-surface0 px-3 py-3 flex flex-col gap-2 hover:border-blue">
+        <c> if (related[ki].image[0] != '\0') { </c>
+        <img src="<c> ESCAPED(related[ki].image); </c>"
+             alt="<c> ESCAPED(related[ki].name); </c>"
+             class="w-full h-44 object-cover">
+        <c> } else { </c>
+        <div class="w-full h-44 flex items-center justify-center text-blue font-bold text-4xl">
+          <c> sb_append_first_glyph(&content, related[ki].name); </c>
+        </div>
+        <c> } </c>
+        <span class="text-base leading-snug line-clamp-2">
+          <c> ESCAPED(related[ki].name); </c>
+        </span>
+        <span class="text-lg font-semibold text-blue">
+          <c> STR(shop_money(related[ki].price)); </c>
+        </span>
+      </a>
+      <c> } </c>
+    </div>
+    <c> } </c>
+  </div>
+
+  <div class="bg-mantle border border-surface0 px-4 py-4">
+    <h2 class="text-base font-semibold mb-3">
+      <c> ESCAPED(tr("shop.recommended", "ផលិតផលដែលគេទិញច្រើន")); </c>
+    </h2>
+    <c> if (rec_count == 0) { </c>
+    <div class="text-sm text-overlay0">
+      <c> ESCAPED(tr("shop.no_recommended", "មិនទាន់មានទិន្នន័យ")); </c>
+    </div>
+    <c> } else { </c>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <c> for (size_t ni = 0; ni < rec_count; ++ni) { </c>
+      <a href="/product/<c> ESCAPED(recommend[ni].id); </c>"
+         class="bg-blue/10 border border-surface0 px-3 py-3 flex flex-col gap-2 hover:border-blue">
+        <c> if (recommend[ni].image[0] != '\0') { </c>
+        <img src="<c> ESCAPED(recommend[ni].image); </c>"
+             alt="<c> ESCAPED(recommend[ni].name); </c>"
+             class="w-full h-44 object-cover">
+        <c> } else { </c>
+        <div class="w-full h-44 flex items-center justify-center text-blue font-bold text-4xl">
+          <c> sb_append_first_glyph(&content, recommend[ni].name); </c>
+        </div>
+        <c> } </c>
+        <span class="text-base leading-snug line-clamp-2">
+          <c> ESCAPED(recommend[ni].name); </c>
+        </span>
+        <span class="text-lg font-semibold text-blue">
+          <c> STR(shop_money(recommend[ni].price)); </c>
+        </span>
+        <span class="text-sm text-overlay0">
+          <c> sb_appendf(&content, "%d", recommend[ni].sold); </c>
+          <c> ESCAPED(tr("shop.sold_count", "បានលក់")); </c>
+        </span>
+      </a>
+      <c> } </c>
+    </div>
+    <c> } </c>
+  </div>
+</section>
+
+<c> if (pic_count > 0) { </c>
+<script src="/js/ProductGallery.js" defer></script>
+<c> } </c>

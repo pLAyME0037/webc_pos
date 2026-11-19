@@ -119,7 +119,7 @@
 // data) and an absent key still reads NULL.
 #define SERVE_EXTRACT_OPT_FIELDS(sc, body_sv, values, opt_fields, opt_count, base) \
     do {                                                                           \
-        for (size_t i_ = 0; i_ < (opt_count); ++i_) {                              \
+        for (size_t i_ = 0; i_ != (opt_count); ++i_) {                             \
             SERVE_EXTRACT_ONE(sc, body_sv, values, (base) + i_, (opt_fields)[i_],  \
                 { (values)[(base) + i_] = (Nob_String_View){0}; });                \
             if ((values)[(base) + i_].count == 0) {                                \

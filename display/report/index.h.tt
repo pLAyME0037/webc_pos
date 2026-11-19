@@ -5,9 +5,9 @@
   <table class="w-full text-sm border border-gray-200 dark:border-gray-700">
     <thead>
       <tr class="bg-slate-100 dark:bg-slate-800 text-xs uppercase tracking-wide text-slate-500">
-        <th class="px-2 py-1.5 text-left">របាយការណ៍</th>
-        <th class="px-2 py-1.5 text-left">ID</th>
-        <th class="px-2 py-1.5 text-left">ទម្រង់</th>
+        <th class="px-2 py-1.5 text-left"><c> ESCAPED(tr("របាយការណ៍", "របាយការណ៍"));</c></th>
+        <th class="px-2 py-1.5 text-left"><c> ESCAPED(tr("ID", "ID"));</c></th>
+        <th class="px-2 py-1.5 text-left"><c> ESCAPED(tr("ទម្រង់", "ទម្រង់"));</c></th>
       </tr>
     </thead>
     <tbody>

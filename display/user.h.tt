@@ -91,12 +91,12 @@
             <tr>
                 <c> const char *th_class = "px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-auto text-left"; </c>
                 <th class="<c> STR(th_class) </c>">#</th>
-                <th class="<c> STR(th_class) </c>">Profile</th>
-                <th class="<c> STR(th_class) </c>">Name</th>
-                <th class="<c> STR(th_class) </c>">Username</th>
-                <th class="<c> STR(th_class) </c>">Email</th>
-                <th class="<c> STR(th_class) </c>">Phone</th>
-                <th class="<c> STR(th_class) </c>">Action</th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Profile", "Profile"));</c></th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Name", "Name"));</c></th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Username", "Username"));</c></th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Email", "Email"));</c></th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Phone", "Phone"));</c></th>
+                <th class="<c> STR(th_class) </c>"><c> ESCAPED(tr("Action", "Action"));</c></th>
             </tr>
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">

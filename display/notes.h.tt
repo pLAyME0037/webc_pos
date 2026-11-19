@@ -32,10 +32,10 @@
         <thead class="bg-indigo-600 text-white">
             <tr>
                 <th class="px-4 py-3 font-semibold">#</th>
-                <th class="px-4 py-3 font-semibold">Title</th>
-                <th class="px-4 py-3 font-semibold">Created At</th>
-                <th class="px-4 py-3 font-semibold">Body</th>
-                <th class="px-4 py-3 font-semibold">Actions</th>
+                <th class="px-4 py-3 font-semibold"><c> ESCAPED(tr("Title", "Title"));</c></th>
+                <th class="px-4 py-3 font-semibold"><c> ESCAPED(tr("Created At", "Created At"));</c></th>
+                <th class="px-4 py-3 font-semibold"><c> ESCAPED(tr("Body", "Body"));</c></th>
+                <th class="px-4 py-3 font-semibold"><c> ESCAPED(tr("Actions", "Actions"));</c></th>
             </tr>
         </thead>
         <tbody id="<c> STR(page_container); </c>" class="divide-y divide-gray-200 dark:divide-gray-700">

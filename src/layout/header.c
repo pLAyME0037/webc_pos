@@ -51,11 +51,6 @@ void render_page_header(String_Builder *sb,
     else if (au && au->email && au->email[0]) u_sub = au->email;
     else                                      u_sub = "Staff workspace";
     const char *u_avatar = sidebar_avatar_html(au);
-#define OUT(buf, size) sb_append_buf(sb, buf, size);
-#define STR(x) sb_append_cstr(sb, (x) ? (x) : "");
-#define CLS(cond, t, f) sb_append_cstr(sb, (cond) ? (t) : (f));
-#define NAV_ACTIVE(prefix) (strncmp((current_path), (prefix), strlen(prefix)) == 0)
-#define CURRENT_PATH current_path
 #define PAGE_TITLE page_title
 // Phase 12: <html lang> follows the active language, the top bar carries
 // the language <select> (back = the page being rendered).
@@ -73,9 +68,4 @@ void render_page_header(String_Builder *sb,
 #undef LANG_FORM
 #undef HTML_LANG
 #undef PAGE_TITLE
-#undef CURRENT_PATH
-#undef NAV_ACTIVE
-#undef CLS
-#undef STR
-#undef OUT
 }

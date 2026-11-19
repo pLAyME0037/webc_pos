@@ -12,7 +12,8 @@
     <div class="bg-slate-100 dark:bg-slate-900 border border-gray-200 dark:border-gray-700 flex justify-between items-center">
         <div class="flex items-center pl-3 gap-2">
             <h4 class="font-medium text-sm text-gray-800 dark:text-white">
-                <c> ESCAPED(config->children[ti].title); </c>
+                <c> ESCAPED(tr(config->children[ti].title,
+                               config->children[ti].title)); </c>
             </h4>
             <span class="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">
                 <c> STR(config->children[ti].fk_column); </c>: <c> STR(rows->items[ri].id); </c>
@@ -34,7 +35,8 @@
             <tr class="border-b border-gray-200 dark:border-gray-700">
                 <c> for (size_t cci = 0; cci < config->children[ti].column_count; ++cci) { </c>
                 <th class="px-3 py-1.5 font-medium text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    <c> ESCAPED(config->children[ti].columns[cci].label); </c>
+                    <c> ESCAPED(tr(config->children[ti].columns[cci].label,
+                                   config->children[ti].columns[cci].label)); </c>
                 </th>
                 <c> } </c>
                 <th class="px-3 py-1.5 font-medium text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 w-20">

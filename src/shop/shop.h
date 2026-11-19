@@ -10,6 +10,8 @@
 
 void serve_shop_index(Serve_Context *sc);         // GET  /
 void serve_shop_product(Serve_Context *sc);       // GET  /product/<id>
+void serve_shop_product_review(Serve_Context *sc); // POST /product/<id>/review (login-gated)
+void serve_shop_review_like(Serve_Context *sc);    // POST /review/<id>/like (login-gated)
 void serve_shop_cart(Serve_Context *sc);          // GET  /cart
 void serve_shop_cart_add(Serve_Context *sc);      // POST /cart/add
 void serve_shop_cart_buynow(Serve_Context *sc);   // POST /cart/buynow

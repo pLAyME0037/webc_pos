@@ -1,15 +1,15 @@
 <div class="grid md:grid-cols-2 gap-3">
   <div class="bg-mantle border border-surface0 self-start">
-    <div class="bg-text text-onbase px-3 py-2 text-sm font-semibold">
+    <div class="bg-text px-3 py-2 text-base font-semibold">
       <c> ESCAPED(tr("checkout.order_title", "ការបញ្ជាទិញរបស់អ្នក")); </c>
     </div>
     <c> for (size_t i = 0; i < cart->count; ++i) { const Shop_Cart_Item *it = &cart->items[i]; if (!it->valid) continue; </c>
-    <div class="px-3 py-2 border-b border-surface0 flex items-center gap-2 text-sm">
+    <div class="px-3 py-2 border-b border-surface0 flex items-center gap-2 text-base">
       <div class="flex-1 min-w-0">
         <div class="text-text truncate">
           <c> ESCAPED(it->name); </c>
         </div>
-        <div class="text-xs text-overlay0">
+        <div class="text-sm text-overlay0">
           <c> ESCAPED(it->sku); </c> × 
           <c> sb_appendf(&content, "%d", it->qty); </c>
         </div>
@@ -19,7 +19,7 @@
       </div>
     </div>
     <c> } </c>
-    <div class="px-3 py-2 flex items-center justify-between bg-surface0/50 border-t border-surface0 text-sm">
+    <div class="px-3 py-2 flex items-center justify-between bg-surface0/50 border-t border-surface0 text-base">
       <span class="font-semibold text-text">
         <c> ESCAPED(tr("checkout.total", "សរុប")); </c>
       </span>
@@ -30,27 +30,27 @@
   </div>
   <form method="POST" action="/checkout" data-checkout-form class="bg-mantle border border-surface0 px-3 py-3 flex flex-col gap-2">
     <c> if (err && err[0]) {</c>
-    <div data-checkout-error class="bg-red/10 border-l-2 border-red text-red px-2 py-1.5 text-xs">
+    <div data-checkout-error class="bg-red/10 border-l-2 border-red text-red px-2 py-2 text-sm">
       <c> ESCAPED(err); </c>
     </div>
     <c> } </c>
-    <label class="text-xs text-subtext0">
+    <label class="text-sm text-subtext0">
       <c> ESCAPED(tr("checkout.label_name", "ឈ្មោះ")); </c>
     </label>
-    <input name="name" required value="<c> ESCAPED(sv_cstr(name)); </c>" class="border border-surface0 bg-base text-text px-2 py-1.5 text-sm">
-    <label class="text-xs text-subtext0">
+    <input name="name" required value="<c> ESCAPED(sv_cstr(name)); </c>" class="border border-surface0 bg-base px-2 py-2 text-base">
+    <label class="text-sm text-subtext0">
       <c> ESCAPED(tr("checkout.label_phone", "លេខទូរស័ព្ទ")); </c>
     </label>
-    <input name="phone" required value="<c> ESCAPED(sv_cstr(phone)); </c>" class="border border-surface0 bg-base text-text px-2 py-1.5 text-sm">
-    <label class="text-xs text-subtext0">
+    <input name="phone" required value="<c> ESCAPED(sv_cstr(phone)); </c>" class="border border-surface0 bg-base px-2 py-2 text-base">
+    <label class="text-sm text-subtext0">
       <c> ESCAPED(tr("checkout.label_address", "អាសយដ្ឋាន")); </c>
     </label>
-    <input name="address" required value="<c> ESCAPED(sv_cstr(addr)); </c>" class="border border-surface0 bg-base text-text px-2 py-1.5 text-sm">
-    <label class="text-xs text-subtext0">
+    <input name="address" required value="<c> ESCAPED(sv_cstr(addr)); </c>" class="border border-surface0 bg-base px-2 py-2 text-base">
+    <label class="text-sm text-subtext0">
       <c> ESCAPED(tr("checkout.label_note", "មតិ (ស្រេចចិត្ត)")); </c>
     </label>
-    <input name="note" value="<c> ESCAPED(sv_cstr(note)); </c>" class="border border-surface0 bg-base text-text px-2 py-1.5 text-sm">
-    <button class="bg-blue text-onbase hover:brightness-90 px-2 py-1.5 text-sm">
+    <input name="note" value="<c> ESCAPED(sv_cstr(note)); </c>" class="border border-surface0 bg-base px-2 py-2 text-base">
+    <button class="bg-blue hover:brightness-90 px-2 py-2 text-base">
       <c> ESCAPED(tr("checkout.submit", "បញ្ជាទិញ")); </c>
     </button>
   </form>

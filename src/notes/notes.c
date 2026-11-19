@@ -52,6 +52,7 @@ void render_notes_page(Serve_Context *sc,
     if (!fragment) {
         render_page_header(sb, page_title, current_path);
     }
+#include "src/i18n/i18n.h"
 #include "build/h_to_html/notes.h"
     if (!fragment) {
         render_page_footer(sb);
@@ -394,22 +395,6 @@ bool update_note(db_t *db, String_View *values, size_t count, String_View id) {
     if (!sql_bind(&stmt, 3, SQL_SV(id)))    return_defer(false);
     if (!sql_final_step(&stmt)) return_defer(false);
 
-defer:
-    sql_finalize(&stmt);
-    return result;
-}
-
-static bool restore_note(db_t *db, String_View id) {
-    static const char *const q[SQL_LANG_COUNT] = {
-        [SQL_SQLITE]   = "UPDATE notes SET deleted_at = NULL WHERE id = ?;",
-        [SQL_MYSQL]    = "UPDATE notes SET deleted_at = NULL WHERE id = ?;",
-        [SQL_POSTGRES] = "UPDATE notes SET deleted_at = NULL WHERE id = $1;",
-    };
-    sql_stmt stmt = {0};
-    bool result = true;
-    if (!sql_prepare(db, q[db->lang], &stmt)) return_defer(false);
-    if (!sql_bind(&stmt, 1, SQL_SV(id)))      return_defer(false);
-    if (!sql_final_step(&stmt))               return_defer(false);
 defer:
     sql_finalize(&stmt);
     return result;

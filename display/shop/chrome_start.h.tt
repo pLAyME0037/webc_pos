@@ -1,44 +1,44 @@
 <div class="min-h-screen flex flex-col bg-base">
   <header class="bg-mantle border-b border-surface0">
-    <div class="max-w-5xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
-      <a href="/" class="font-bold text-text whitespace-nowrap">
+    <div class="max-w-7xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
+      <a href="/" class="font-bold whitespace-nowrap">
         <c> ESCAPED(shop_name()); </c>
       </a>
       <form method="GET" action="/" class="flex items-center gap-1 flex-1">
         <input name="q" placeholder="<c> ESCAPED(tr("shop.search.placeholder", "ស្វែងរកផលិតផល...")); </c>"
-               class="border border-surface0 bg-mantle text-text px-2 py-1.5 text-sm flex-1 min-w-0">
-        <button class="bg-blue text-onbase hover:brightness-90 px-2 py-1.5 text-sm whitespace-nowrap">
+               class="border border-surface0 bg-mantle px-2.5 py-2 text-base flex-1 min-w-0">
+        <button class="bg-blue hover:brightness-90 px-2.5 py-2 text-base whitespace-nowrap">
           <c> ESCAPED(tr("shop.search.button", "ស្វែងរក")); </c>
         </button>
       </form>
-      <a href="/cart" class="text-sm text-text border border-surface0 px-2 py-1.5 whitespace-nowrap">
+      <a href="/cart" class="text-base border border-surface0 px-2.5 py-2 whitespace-nowrap">
         <c> ESCAPED(tr("shop.cart_link", "រទេះ")); </c> 
         <c> sb_append_cstr(sb, "("); sb_appendf(sb, "%zu", cart_entry_count(sc)); sb_append_cstr(sb, ")"); </c>
       </a>
       <c> if (!signed_in || is_admin) {</c>
-      <a href="/dashboard" class="text-sm text-blue whitespace-nowrap">
+      <a href="/dashboard" class="text-base whitespace-nowrap">
         <c> ESCAPED(tr("shop.admin_link", "ផ្ទៃគ្រប់គ្រង")); </c>
       </a>
       <c> } </c>
       <c> if (signed_in) {</c>
-      <span class="text-sm text-text px-1 whitespace-nowrap">
+      <span class="text-base px-1 whitespace-nowrap">
         <c> ESCAPED(au->name && au->name[0] ? au->name : au->id); </c>
       </span>
-      <a href="/accounts" class="text-sm text-blue px-1 whitespace-nowrap">
+      <a href="/accounts" class="text-blue px-1 whitespace-nowrap">
         <c> ESCAPED(tr("shop.accounts_link", "គណនី")); </c>
       </a>
-      <a href="/logout" class="text-sm text-text border border-surface0 px-2 py-1.5 whitespace-nowrap">
+      <a href="/logout" class="text-base border border-surface0 px-2.5 py-2 whitespace-nowrap">
         <c> ESCAPED(tr("shop.logout_link", "ចេញ")); </c>
       </a>
       <c> } else { </c>
-      <a href="/login" class="text-sm text-text border border-surface0 px-2 py-1.5 whitespace-nowrap">
+      <a href="/login" class="text-base border border-surface0 px-2.5 py-2 whitespace-nowrap">
         <c> ESCAPED(tr("shop.signin_link", "ចូល")); </c>
       </a>
-      <a href="/signup" class="text-sm bg-blue text-onbase px-2 py-1.5 whitespace-nowrap">
+      <a href="/signup" class="text-base bg-blue px-2.5 py-2 whitespace-nowrap">
         <c> ESCAPED(tr("shop.signup_link", "ចុះឈ្មោះ")); </c>
       </a>
       <c> } </c>
-      <div class="flex items-center gap-0.5 text-xs" data-theme-switch>
+      <div class="flex items-center gap-0.5 text-sm" data-theme-switch>
         <button type="button" data-set-theme="light"
                 title="<c> ESCAPED(tr("shop.theme_light", "ស្រាល")); </c>"
                 onclick="window.themeController.setTheme('light')"
@@ -58,4 +58,4 @@
       <c> STR(i18n_lang_form_html(back)); </c>
     </div>
   </header>
-  <main class="max-w-5xl mx-auto w-full px-3 py-3 flex flex-col gap-3">
+  <main class="max-w-7xl mx-auto w-full px-3 py-3 flex flex-col gap-3">

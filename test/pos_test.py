@@ -839,6 +839,102 @@ def main():
     t.chk("stock row in child tab (FK label)",
           "Main Depot" in body.decode(), True)
 
+    # ---- Pictures child tab (product_images) ------------------------------
+    st, body, _ = c.get("/pos/products")
+    html = body.decode()
+    t.chk("pictures child tab present",
+          'data-tab="product_images"' in html, True)
+    t.chk("seed picture row in tab",
+          'data-row-id="sd-pic-001"' in html, True)
+    kind_m = re.search(r'<select[^>]*name="kind"[^>]*>(.*?)</select>',
+                       html, re.S)
+    kind_opts = re.findall(r'<option value="([^"]+)"',
+                           kind_m.group(1)) if kind_m else []
+    t.chk("kind select offers the fixed enum",
+          kind_opts, ["MAIN", "GALLERY", "DETAIL", "PACKAGE"])
+
+    project = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    upload_dir = os.path.join(project, "resource", "image", "upload")
+    with open(os.path.join(project, "resource", "image", "user1.png"),
+              "rb") as f:
+        png = f.read()
+
+    # create with a file -> row + stored upload
+    st, _, _ = c.post_multipart(
+        "/pos/product_images/create?product_id=" + pid
+        + "&redirect=/pos/products",
+        {"kind": "GALLERY", "name": "Suite picture"},
+        {"image": ("suite.png", png, "image/png")})
+    t.chk("picture create (multipart + file)", st, 302)
+    pic_id = db_row("SELECT id FROM product_images "
+                    "WHERE name = 'Suite picture'")[0]
+    pic_img = db_row("SELECT image FROM product_images WHERE id = ?",
+                     (pic_id,))[0]
+    t.chk("picture saved with product + kind",
+          db_row("SELECT product_id, kind FROM product_images "
+                 "WHERE id = ?", (pic_id,)), (pid, "GALLERY"))
+    t.chk("uploaded image URL stored",
+          pic_img.startswith("/resource/image/upload/"), True)
+    with open(os.path.join(TMP, "uploads.txt"), "a") as f:
+        f.write(pic_img + "\n")
+
+    # create without a file / with a garbage kind -> 400, no row
+    st, _, _ = c.post_multipart(
+        "/pos/product_images/create?product_id=" + pid
+        + "&redirect=/pos/products",
+        {"kind": "MAIN", "name": "no file picture"})
+    t.chk("picture create without file 400", st, 400)
+    t.chk("no-file create stored nothing",
+          db_row("SELECT COUNT(*) FROM product_images "
+                 "WHERE name = 'no file picture'")[0], 0)
+
+    before_files = set(os.listdir(upload_dir))
+    st, _, _ = c.post_multipart(
+        "/pos/product_images/create?product_id=" + pid
+        + "&redirect=/pos/products",
+        {"kind": "WEIRD", "name": "bad kind picture"},
+        {"image": ("bad.png", png, "image/png")})
+    t.chk("picture create with unknown kind 400", st, 400)
+    t.chk("bad-kind create stored nothing",
+          db_row("SELECT COUNT(*) FROM product_images "
+                 "WHERE name = 'bad kind picture'")[0], 0)
+    # the shared extractor saves the file before validation runs (server-wide
+    # SERVE_EXTRACT behavior) - record the orphan so run.sh cleans it up
+    for orphan in sorted(set(os.listdir(upload_dir)) - before_files):
+        with open(os.path.join(TMP, "uploads.txt"), "a") as f:
+            f.write("/resource/image/upload/" + orphan + "\n")
+
+    # edit without a new file keeps the stored image
+    st, _, _ = c.post_multipart(
+        f"/pos/product_images/{pic_id}/update?redirect=/pos/products",
+        {"kind": "DETAIL", "image": "", "name": "Suite picture renamed",
+         "sort_order": "3"})
+    t.chk("picture edit without file", st, 302)
+    t.chk("picture edit keeps kind/name/order",
+          db_row("SELECT kind, name, sort_order FROM product_images "
+                 "WHERE id = ?", (pic_id,)),
+          ("DETAIL", "Suite picture renamed", 3))
+    t.chk("picture edit keeps stored image",
+          db_row("SELECT image FROM product_images WHERE id = ?",
+                 (pic_id,)), (pic_img,))
+
+    # soft-delete hides it from the tab, restore brings it back
+    st, _, _ = c.post_urlencoded(
+        f"/pos/product_images/{pic_id}/delete?redirect=/pos/products", {})
+    t.chk("picture soft delete", st, 302)
+    t.chk("picture deleted_at stamped",
+          db_row("SELECT deleted_at FROM product_images WHERE id = ?",
+                 (pic_id,))[0] is not None, True)
+    st, body, _ = c.get("/pos/products")
+    t.chk("deleted picture gone from tab",
+          f'data-row-id="{pic_id}"' in body.decode(), False)
+    st, _, _ = c.post_urlencoded(
+        f"/pos/product_images/{pic_id}/restore?redirect=/pos/products", {})
+    t.chk("picture restore", st, 302)
+    t.chk("picture restored",
+          db_row("SELECT deleted_at FROM product_images WHERE id = ?",
+                 (pic_id,))[0] is None, True)
+
     # standalone child soft-delete hides the row; the restore route brings
     # it back (trash UI for children follows the parent ?deleted=1 view).
     st, _, _ = c.post_urlencoded(
@@ -1927,21 +2023,23 @@ def main():
     t.chk("created_at cell = local wall-clock time (UTC +7)",
           want in body.decode(), True)
 
-    # ---- Phase 10/11/13/14/16: schema completeness (0001..0009 + history) --
+    # ---- Phase 10/11/13/14/16: schema completeness (0001..0012 + history) --
     want = sorted((
         "audit_logs", "cash", "categories", "communes",
         "customer_interactions", "customers", "deliveries", "dictionaries",
         "districts", "financial_ledgers", "inventory_stocks", "languages",
         "notes", "order_items",
-        "orders", "org_units", "payments", "permissions", "product_variants",
-        "products", "provinces", "role_permissions", "roles", "staff",
-        "stock_ledger", "system_alerts", "system_configs", "translations",
-        "user_roles", "users", "user_sessions", "villages", "Migrations",
+        "orders", "org_units", "payments", "permissions", "product_images",
+        "product_reviews", "product_variants",
+        "products", "provinces", "review_likes", "role_permissions", "roles",
+        "staff", "stock_ledger", "system_alerts", "system_configs",
+        "translations", "user_roles", "users", "user_sessions", "villages",
+        "Migrations",
     ))
     got = sorted(db_row(
         "SELECT GROUP_CONCAT(name) FROM sqlite_master "
         "WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")[0].split(","))
-    t.chk("all 34 tables exist after migrations 0001-0009", got, want)
+    t.chk("all 37 tables exist after migrations 0001-0012", got, want)
 
     ok = t.summary()
     sys.exit(0 if ok else 1)

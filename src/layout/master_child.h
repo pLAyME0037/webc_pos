@@ -17,7 +17,7 @@
 
 typedef struct {
     const char *id;     /* TEXT pk (legacy numeric string or uuid) */
-    char       *label;
+    const char *label;  /* aliased from id or temp_strdup - never mutated */
 } MD_Option;
 
 typedef enum {

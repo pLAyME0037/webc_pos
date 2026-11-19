@@ -80,7 +80,7 @@
           data-md-op="create"
           class="mb-3 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
         <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-            Add <c> ESCAPED(config->title); </c>
+            <c> ESCAPED(tr("Add", "Add")); </c> <c> ESCAPED(tr(config->title, config->title)); </c>
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <c> for (size_t fi = 0; fi < form_cols.count; ++fi) { </c>
@@ -91,7 +91,7 @@
                             MD_Column *scol = &form_cols.items[fi].col->subcols[pi]; </c>
                         <div>
                             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">
-                                <c> ESCAPED(scol->label); </c>
+                                <c> ESCAPED(tr(scol->label, scol->label)); </c>
                             </label>
                             <c> if (scol->type == COL_TYPE_IMG) { </c>
                             <div class="relative flex items-center gap-2" data-img-upload>
@@ -149,7 +149,8 @@
                 <c> } else { </c>
                 <div>
                     <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">
-                        <c> ESCAPED(form_cols.items[fi].col->label); </c>
+                        <c> ESCAPED(tr(form_cols.items[fi].col->label,
+                                        form_cols.items[fi].col->label)); </c>
                     </label>
                     <c> if (form_cols.items[fi].col->type == COL_TYPE_IMG) { </c>
                     <div class="relative flex items-center gap-2" data-img-upload>
@@ -250,11 +251,12 @@
         <thead class="bg-slate-100 dark:bg-slate-900 dark:text-white text-slate-800">
             <tr class="border-b border-gray-200 dark:border-gray-700">
                 <th class="py-1 pl-3 font-semibold">
-                    No
+                    &numero; 
                 </th>
                 <c> for (size_t i = 0; i < config->column_count; ++i) { </c>
                 <th class="py-1 pl-3 font-semibold">
-                    <c> ESCAPED(config->columns[i].label); </c>
+                    <c> ESCAPED(tr(config->columns[i].label,
+                                    config->columns[i].label)); </c>
                 </th>
                 <c> } </c>
                 <c>if (!config->read_only          &&
@@ -277,7 +279,7 @@
             <tr>
                 <td colspan="<c> INT(config->column_count + 2); </c>"
                     class="pl-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 text-center">
-                    No <c> ESCAPED(config->title); </c> yet.
+                    <c> ESCAPED(tr("No", "No")); </c> <c> ESCAPED(tr(config->title, config->title)); </c> <c> ESCAPED(tr("yet.", "yet.")); </c>
                 </td>
             </tr>
             <c> } else { </c>
@@ -315,8 +317,8 @@
                                   data-md-target="<c> STR(rows->items[ri].id); </c>"
                                   class="inline">
                                 <button type="submit"
-                                        title="Restore"
-                                        aria-label="Restore"
+                                        title="<c> ESCAPED(tr("Restore", "Restore")); </c>"
+                                        aria-label="<c> ESCAPED(tr("Restore", "Restore")); </c>"
                                         class="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/40">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                                 </button>
@@ -325,8 +327,8 @@
                             <c> if (!config->read_only && !config->create_only) { </c>
                             <button type="button"
                                     class="master-edit-btn p-1 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
-                                    title="Edit"
-                                    aria-label="Edit"
+                                    title="<c> ESCAPED(tr("Edit", "Edit")); </c>"
+                                    aria-label="<c> ESCAPED(tr("Edit", "Edit")); </c>"
                                     data-master-id="<c> STR(rows->items[ri].id); </c>">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             </button>
@@ -353,8 +355,8 @@
                                   data-md-target="<c> STR(rows->items[ri].id); </c>"
                                   class="inline">
                                 <button type="submit"
-                                        title="Delete"
-                                        aria-label="Delete"
+                                        title="<c> ESCAPED(tr("Delete", "Delete")); </c>"
+                                        aria-label="<c> ESCAPED(tr("Delete", "Delete")); </c>"
                                         class="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                 </button>
@@ -386,7 +388,7 @@
                                     const char *cur_val = rows->items[ri].values[val_idx];
                             </c>
                             <label class="text-sm text-gray-500 dark:text-gray-400">
-                                <c> ESCAPED(scol->label); </c>
+                                <c> ESCAPED(tr(scol->label, scol->label)); </c>
                             </label>
                             <c> if (scol->type == COL_TYPE_IMG) {
                                     bool has_img = false;

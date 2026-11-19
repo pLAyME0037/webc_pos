@@ -147,13 +147,8 @@ void serve_shop_cart(Serve_Context *sc) {
 
     // Cart body: display/shop/cart.h.tt (design rule: state-driven HTML
     // belongs to a template).
-#define OUT(buf, size) sb_append_buf(&content, buf, size);
-#define STR(x) sb_append_cstr(&content, (x) ? (x) : "");
-#define ESCAPED(x) sb_append_html_escaped(&content, (x));
+String_Builder *sb = &content;
 #include "build/h_to_html/shop/cart.h"
-#undef OUT
-#undef STR
-#undef ESCAPED
 
     shop_chrome_end(&content);
     shop_render(sc, 200, tr("cart.title", "រទេះទំនិញ"), &content);

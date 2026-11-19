@@ -111,6 +111,7 @@ def main():
     t.chk("storefront has no admin sidebar", 'class="nav-link' in html, False)
     t.chk("storefront grid present", "grid grid-cols-2" in html, True)
     t.chk("storefront search box", 'name="q"' in html, True)
+    t.chk("wide container on home", html.count("max-w-7xl") >= 3, True)
 
     # ?q= search finds a specific seeded product
     st, body, _ = c.get("/?q=" + urllib.parse.quote(a[1]))
@@ -156,6 +157,214 @@ def main():
     t.chk("detail buy-now form", 'action="/cart/buynow"' in html, True)
     t.chk("unknown product id -> 404", c.get("/product/no-such-id")[0], 404)
     t.chk("empty product id -> 404", c.get("/product/")[0], 404)
+
+    # ---- product page: 4 sections (pictures / detail / reviews / related) -
+    st, body, _ = c.get("/product/sd-prod-050")
+    html = body.decode()
+    t.chk("product page has 4 sections",
+          sorted(re.findall(r'id="product-([a-z]+)"', html)),
+          ["detail", "pictures", "related", "reviews"])
+    t.chk("picture tile shows fixed kind badge",
+          re.search(r'shrink-0">\s*MAIN\s*</span>', html) is not None, True)
+    t.chk("picture caption renders", "រូបមុខផលិតផល" in html, True)
+    t.chk("picture image tag served",
+          'src="/resource/image/' in html, True)
+    t.chk("seed thread renders (2 roots + 1 reply)",
+          html.count('data-review-id="'), 3)
+    t.chk("rating average renders", "★ 4.5" in html, True)
+    t.chk("like count renders", re.search(r"♥ 2", html) is not None, True)
+    t.chk("sold count renders on picks",
+          re.search(r">\s*\d+\s*បានលក់\s*<", html) is not None, True)
+    rel = re.findall(r'href="/product/(sd-prod-\d+)"', html)
+    t.chk("related/recommend exclude self", "sd-prod-050" in rel, False)
+    t.chk("related+recommend list siblings", len(rel) >= 8, True)
+
+    # AliExpress-style hero: gallery LEFT of detail, zoom furniture, data
+    t.chk("hero pairs gallery before detail",
+          html.find('id="product-pictures"') < html.find('id="product-detail"')
+          and 'data-gallery' in html, True)
+    t.chk("gallery thumbnails for every picture",
+          html.count('data-gallery-thumb'), 2)
+    t.chk("lightbox dialog present", 'id="gallery-lightbox"' in html, True)
+    t.chk("gallery script included",
+          '<script src="/js/ProductGallery.js"' in html, True)
+    t.chk("star distribution bars render",
+          all(('data-star-bar="%d"' % s) in html for s in (5, 4, 3, 2, 1)),
+          True)
+    hero = re.search(r'id="product-detail"(.*?)</section>', html, re.S)
+    sold_db = int(db_row("SELECT COALESCE(SUM(quantity), 0) "
+                         "FROM order_items WHERE product_id = 'sd-prod-050' "
+                         "AND deleted_at IS NULL")[0])
+    t.chk("hero sold count equals DB sum",
+          hero is not None and
+          re.search(r'>\s*' + str(sold_db) + r'\s*បានលក់\s*<',
+                    hero.group(1)) is not None, True)
+    for star in (5, 4, 3, 2, 1):
+        want_c = db_row("SELECT COUNT(*) FROM product_reviews "
+                        "WHERE product_id = 'sd-prod-050' "
+                        "AND rating = ? AND deleted_at IS NULL",
+                        (star,))[0]
+        bar = re.search(r'data-star-bar="%d".*?shrink-0">(\d+)<' % star,
+                        html, re.S)
+        t.chk("star bar %d count" % star,
+              bar is not None and int(bar.group(1)) == want_c, True)
+
+    # readability pass: 3-col hero carries a user-stats card beside detail,
+    # related/recommend are stacked full-width 3-per-row tall cards
+    t.chk("user-stats card beside detail",
+          html.find('id="product-detail"') < html.find('id="user-stats"')
+          and 'id="user-stats"' in html, True)
+    related = re.search(r'id="product-related"(.*)', html, re.S)
+    t.chk("related block is 3-col", related is not None and
+          related.group(1).count('md:grid-cols-3') == 2, True)
+    t.chk("related cards tall images", related is not None and
+          related.group(1).count('h-44') >= 8, True)
+
+    # i18n backfill: the 35 formerly-unseeded keys exist in both languages
+    # and the en cookie actually switches the storefront off the Khmer
+    # C-literal fallback
+    t.chk("login_to_comment seeded km+en",
+          db_row("SELECT COUNT(*) FROM translations "
+                 "WHERE trans_key = 'shop.login_to_comment' "
+                 "AND language_id IN ('lang_km', 'lang_en')")[0], 2)
+    t.chk("signup keys seeded km+en",
+          db_row("SELECT COUNT(*) FROM translations "
+                 "WHERE trans_key = 'auth.su_submit' "
+                 "AND language_id IN ('lang_km', 'lang_en')")[0], 2)
+    st, body, _ = c.get("/product/sd-prod-050")
+    t.chk("default language keeps khmer prompt",
+          "ចូលគណនីដើម្បីផ្សាយមតិ និង LIKE" in body.decode(), True)
+    c.cookies["webc_lang"] = "en"
+    st, body, _ = c.get("/product/sd-prod-050")
+    t.chk("en cookie switches login prompt",
+          "Sign in to post comments and LIKE" in body.decode(), True)
+    c.cookies.pop("webc_lang", None)
+
+    # empty-state product still renders (no pictures section, no gallery JS)
+    st, body, _ = c.get("/product/sd-prod-003")
+    html = body.decode()
+    t.chk("empty product hides pictures section",
+          'id="product-pictures"' in html, False)
+    t.chk("empty product skips gallery script",
+          '<script src="/js/ProductGallery.js"' in html, False)
+    t.chk("empty product keeps reviews section",
+          'id="product-reviews"' in html, True)
+
+    # ---- review gating: guests get /login, nothing is stored --------------
+    st, hdr, _, _ = c.req_full(
+        "POST", "/product/sd-prod-050/review",
+        body=urllib.parse.urlencode({"body": "guest spam"}).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    t.chk("guest review 303", st, 303)
+    t.chk("guest review -> login with next",
+          hdr.get("Location", "").startswith("/login?next=/product/"), True)
+    t.chk("guest review stored nothing",
+          db_row("SELECT COUNT(*) FROM product_reviews "
+                 "WHERE body = 'guest spam'")[0], 0)
+    st, hdr, _, _ = c.req_full(
+        "POST", "/review/sd-rev-1/like",
+        body=b"", headers={"Content-Type": "application/x-www-form-urlencoded"})
+    t.chk("guest like 303", st, 303)
+    t.chk("guest like stored nothing",
+          db_row("SELECT COUNT(*) FROM review_likes "
+                 "WHERE review_id = 'sd-rev-1' AND user_id = 'sd-user-1'")[0],
+          1)
+
+    # ---- signed-in posting: root / reply / flatten / validation / like ----
+    g = Client(HOST, PORT)
+    st, _ = g.login_as("sd.staff1", "posadmin1")
+    t.chk("staff login for review posting", st, 303)
+    st, _, _ = g.post_urlencoded(
+        "/product/sd-prod-050/review",
+        {"body": "suite root comment", "rating": "4"})
+    t.chk("root review posts", st, 303)
+    rid = db_row("SELECT id FROM product_reviews "
+                 "WHERE body = 'suite root comment'")[0]
+    t.chk("root review saved with product+rating",
+          db_row("SELECT product_id, rating, parent_id FROM product_reviews "
+                 "WHERE id = ?", (rid,)),
+          ("sd-prod-050", 4, None))
+    st, _, _ = g.post_urlencoded(
+        "/product/sd-prod-050/review",
+        {"body": "suite reply", "parent_id": rid})
+    t.chk("reply posts", st, 303)
+    rpid = db_row("SELECT id FROM product_reviews "
+                  "WHERE body = 'suite reply'")[0]
+    t.chk("reply saved under root",
+          db_row("SELECT parent_id FROM product_reviews WHERE id = ?",
+                 (rpid,)), (rid,))
+    st, _, _ = g.post_urlencoded(
+        "/product/sd-prod-050/review",
+        {"body": "suite flatten", "parent_id": rpid})
+    t.chk("reply-to-reply posts", st, 303)
+    t.chk("reply-to-reply flattened to root",
+          db_row("SELECT parent_id FROM product_reviews "
+                 "WHERE body = 'suite flatten'"), (rid,))
+
+    st, _, _ = g.post_urlencoded("/product/sd-prod-050/review",
+                                 {"body": "   "})
+    t.chk("blank review 400", st, 400)
+    st, _, _ = g.post_urlencoded("/product/sd-prod-050/review",
+                                 {"body": "x", "rating": "9"})
+    t.chk("rating out of range 400", st, 400)
+    st, _, _ = g.post_urlencoded("/product/sd-prod-050/review",
+                                 {"body": "x", "parent_id": rid,
+                                  "rating": "3"})
+    t.chk("rating on reply 400", st, 400)
+    st, _, _ = g.post_urlencoded("/product/sd-prod-050/review",
+                                 {"body": "x", "parent_id": "sd-rev-4"})
+    t.chk("parent of another product 400", st, 400)
+    st, _, _ = g.post_urlencoded("/product/no-such-product/review",
+                                 {"body": "x"})
+    t.chk("unknown product 404", st, 404)
+
+    # like toggle: sd.staff1 IS sd-user-1, who already likes sd-rev-1 via
+    # the seed - first click unlikes, second click re-likes (unique pair)
+    likes0 = db_row("SELECT COUNT(*) FROM review_likes "
+                    "WHERE review_id = 'sd-rev-1' AND user_id = 'sd-user-1'")[0]
+    st, _, _ = g.post_urlencoded("/review/sd-rev-1/like", {})
+    t.chk("like toggle (unlike first)", st, 303)
+    t.chk("like row removed",
+          db_row("SELECT COUNT(*) FROM review_likes "
+                 "WHERE review_id = 'sd-rev-1' AND user_id = 'sd-user-1'")[0],
+          1 - likes0)
+    st, _, _ = g.post_urlencoded("/review/sd-rev-1/like", {})
+    t.chk("like toggle back", st, 303)
+    t.chk("like row re-inserted",
+          db_row("SELECT COUNT(*) FROM review_likes "
+                 "WHERE review_id = 'sd-rev-1' AND user_id = 'sd-user-1'")[0],
+          likes0)
+    st, _, _ = g.post_urlencoded("/review/sd-rev-999/like", {})
+    t.chk("like unknown review 404", st, 404)
+
+    # signed-in page: thread grew, reply sits under its root, form visible
+    st, body, _ = g.get("/product/sd-prod-050")
+    html = body.decode()
+    t.chk("thread renders new rows", html.count('data-review-id="'), 6)
+    t.chk("posted comment renders", "suite root comment" in html, True)
+    t.chk("reply renders under page", "suite reply" in html, True)
+    t.chk("flatten renders under page", "suite flatten" in html, True)
+    t.chk("root before reply in html",
+          html.find("suite root comment") < html.find("suite reply"), True)
+    t.chk("signed-in review form posts to product",
+          'action="/product/sd-prod-050/review"' in html, True)
+
+    # ---- top-6 root cap: 5 more roots push the old ones off the page ----
+    for i in range(5):
+        st, _, _ = g.post_urlencoded("/product/sd-prod-050/review",
+                                     {"body": "cap root %d" % i})
+        t.chk("cap root %d posts" % i, st, 303)
+    st, body, _ = g.get("/product/sd-prod-050")
+    html = body.decode()
+    root_rows = re.findall(
+        r'<article class="border-t border-surface0 pt-3" data-review-id',
+        html)
+    t.chk("root cap holds at 6", len(root_rows), 6)
+    t.chk("newest root renders first",
+          html.find("cap root 4") < html.find("cap root 0"), True)
+    t.chk("sixth-newest still renders", "suite root comment" in html, True)
+    t.chk("oldest roots drop off the page",
+          'data-review-id="sd-rev-1"' in html, False)
 
     # ---- cookie cart ------------------------------------------------------
     st, _ = post("/cart/add", {"product_id": a[0], "qty": "2",

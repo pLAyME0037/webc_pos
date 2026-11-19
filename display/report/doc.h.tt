@@ -21,7 +21,7 @@
           <th bgcolor="#1f2937" <c> if (hdr_num) { </c> class="num" <c> } </c>>
             <font color="#ffffff">
               <c> if (label) {</c>
-              <c> ESCAPED(label); </c>
+              <c> ESCAPED(tr(label, label)); </c>
               <c> } else {</c>
               <c> INT(ci + 1); </c>
               <c> } </c>

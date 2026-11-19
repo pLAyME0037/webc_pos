@@ -202,15 +202,12 @@ const char *i18n_lang_form_html(const char *back) {
     i18n_resolve();
     if (g_i18n.nlangs < 2) return "";
 
-    String_Builder sb = {0};
-#define OUT(buf, size) sb_append_buf(&sb, buf, size);
-#define ESCAPED(x) sb_append_html_escaped(&sb, (x) ? (x) : "");
+    String_Builder content = {0};
+    String_Builder *sb = &content;
 #include "build/h_to_html/i18n/lang_form.h"
-#undef OUT
-#undef ESCAPED
-    sb_append_null(&sb);
-    const char *html = temp_strdup(sb.items ? sb.items : "");
-    sb_free(sb);
+    sb_append_null(&content);
+    const char *html = temp_strdup(content.items ? content.items : "");
+    sb_free(content);
     return html;
 }
 

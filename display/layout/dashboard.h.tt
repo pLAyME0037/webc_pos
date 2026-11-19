@@ -135,11 +135,11 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="text-left text-xs text-overlay0 border-b border-surface0">
-                        <th class="py-1 pr-2 font-medium">Order</th>
-                        <th class="py-1 pr-2 font-medium">Time</th>
-                        <th class="py-1 pr-2 font-medium">Cashier</th>
-                        <th class="py-1 pr-2 font-medium text-right">Total</th>
-                        <th class="py-1 font-medium">Status</th>
+                        <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Order", "Order"));</c></th>
+                        <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Time", "Time"));</c></th>
+                        <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Cashier", "Cashier"));</c></th>
+                        <th class="py-1 pr-2 font-medium text-right"><c> ESCAPED(tr("Total", "Total"));</c></th>
+                        <th class="py-1 font-medium"><c> ESCAPED(tr("Status", "Status"));</c></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -179,11 +179,11 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="text-left text-xs text-overlay0 border-b border-surface0">
-                    <th class="py-1 pr-2 font-medium">Order</th>
-                    <th class="py-1 pr-2 font-medium">Recipient</th>
-                    <th class="py-1 pr-2 font-medium">Phone</th>
-                    <th class="py-1 pr-2 font-medium">Destination</th>
-                    <th class="py-1 font-medium">Status</th>
+                    <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Order", "Order"));</c></th>
+                    <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Recipient", "Recipient"));</c></th>
+                    <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Phone", "Phone"));</c></th>
+                    <th class="py-1 pr-2 font-medium"><c> ESCAPED(tr("Destination", "Destination"));</c></th>
+                    <th class="py-1 font-medium"><c> ESCAPED(tr("Status", "Status"));</c></th>
                 </tr>
             </thead>
             <tbody>

@@ -29,6 +29,11 @@ int main(int argc, char *argv[]) {
     const char *filepath = argv[1];
     if (!nob_read_entire_file(filepath, &sb)) return 1;
     String_View tmplat = sb_to_sv(sb);
+    // Auto-gate: every generated header opens the emit macros (OUT/STR/...)
+    // before its body and closes them after - hosts just #include it, no
+    // hand-rolled #define/#undef fences. Ownership marks in tpl_emit.h make
+    // this nesting-safe for templates included from other templates.
+    printf("#include \"src/core/tpl_emit.h\"\n");
     int c_code_mode = 0;
     while (tmplat.count) {
         String_View tag;
@@ -39,5 +44,6 @@ int main(int argc, char *argv[]) {
         else compile_byte_array(token);
         c_code_mode = !c_code_mode;
     }
+    printf("#include \"src/core/tpl_ungate.h\"\n");
     return 0;
 }

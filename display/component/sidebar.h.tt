@@ -241,7 +241,7 @@
         <c> for (size_t ni = 0; ni < nav_items_count; ++ni) { </c>
         <c> if (nav_items[ni].group != NULL && nav_grp[ni]) { </c>
         <div class="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-overlay0 bg-surface0/60 nav-label">
-            <c> STR(nav_items[ni].group); </c>
+            <c> STR(tr(nav_items[ni].group, nav_items[ni].group)); </c>
         </div>
         <c> } </c>
         <c> if (nav_vis[ni]) { </c>
@@ -256,11 +256,11 @@
                           d="<c> STR(nav_items[ni].icon); </c>" />
                 </svg>
                 <span class="ml-3 text-sm font-medium whitespace-nowrap flex-1 nav-label">
-                    <c> STR(nav_items[ni].label); </c>
+                    <c> STR(tr(nav_items[ni].label, nav_items[ni].label)); </c>
                 </span>
             </a>
             <div class="sidebar-tooltip">
-                <c> STR(nav_items[ni].label); </c>
+                <c> STR(tr(nav_items[ni].label, nav_items[ni].label)); </c>
             </div>
         </div>
         <c> } </c>
@@ -275,10 +275,10 @@
                       d="M17 19v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 9a4 4 0 100-8 4 4 0 000 8zM23 19v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
             </svg>
             <span class="ml-3 text-sm font-medium whitespace-nowrap nav-label">
-                Accounts
+                    <c> STR(tr("Accounts", "Accounts")); </c>
             </span>
             <div class="sidebar-tooltip">
-                Accounts
+                    <c> STR(tr("Accounts", "Accounts")); </c>
             </div>
         </a>
         <form method="POST"
@@ -295,11 +295,11 @@
                           d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 <span class="ml-3 text-sm font-medium whitespace-nowrap nav-label">
-                    Log Out
+                        <c> STR(tr("Log Out", "Log Out")); </c>
                 </span>
 
                 <div class="sidebar-tooltip">
-                    Log Out
+                        <c> STR(tr("Log Out", "Log Out")); </c>
                 </div>
             </button>
         </form>
